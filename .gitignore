@@ -1,0 +1,3 @@
+﻿__pycache__/
+*.pyc
+pipelines/.builder_step_tests/
