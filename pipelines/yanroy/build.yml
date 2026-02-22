@@ -1,0 +1,73 @@
+project_id: land_core
+shared_with_projects:
+  - gee_lee
+
+requires_pipelines:
+  - pipelines/yanroy/download.yml
+  - pipelines/tiger/state.yml
+
+vars:
+  dataset_id: stage.yanroy_filtered_v1
+  name: yanroy_build
+  gdrive_remote: gdrive
+  gdrive_meta_src: Data/ETL/Meta
+  gdrive_meta_glob: states.of.interest.csv
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  yanroy_dir: "{env.basedir}/data/yanroy"
+  rawdir: "{yanroy_dir}/raw"
+  metadir: "{yanroy_dir}/meta"
+  filtereddir: "{yanroy_dir}/filtered"
+  tiger_state_path: "{env.basedir}/data/tiger/state/extract/tl_2025_us_state.shp"
+  states_csv_path: "{metadir}/states.of.interest.csv"
+  filtered_states_path: "{workdir}/states/states.of.interest.gpkg"
+  raster_filter_outdir: "{workdir}/raster_filter"
+
+steps:
+  - name: "{sys.step.NN}_download_states_of_interest"
+    plugin: gdrive_download
+    args:
+      remote: "{gdrive_remote}"
+      src: "{gdrive_meta_src}"
+      glob: "{gdrive_meta_glob}"
+      out: "{metadir}"
+      recursive: false
+      no_clobber: true
+    output_var: staged_states_csv
+
+  - name: "{sys.step.NN}_states_csv_to_values"
+    plugin: exec_script
+    args:
+      script: scripts/yanroy/states_csv_to_values.py
+      script_args: "--csv \"{states_csv_path}\""
+      verbose: true
+    output_var: states_values
+
+  - name: "{sys.step.NN}_filter_tiger_states"
+    plugin: geo_vector_filter
+    args:
+      input_path: "{tiger_state_path}"
+      output_path: "{filtered_states_path}"
+      key: STUSPS
+      op: in
+      values: "{states_values.stdout}"
+      case_insensitive: true
+    output_var: filtered_states
+
+  - name: "{sys.step.NN}_select_yanroy_rasters"
+    plugin: geo_filter_rasters_by_polygon
+    args:
+      raster_dir: "{rawdir}"
+      selector_path: "{filtered_states_path}"
+      output_dir: "{raster_filter_outdir}"
+      raster_extensions: ".hdr"
+      fail_on_missing_crs: false
+    output_var: selected_rasters
+
+  - name: "{sys.step.NN}_materialize_filtered_rasters"
+    plugin: exec_script
+    args:
+      script: scripts/yanroy/copy_selected_rasters.py
+      script_args: "--selected-csv \"{selected_rasters.selected_rasters_csv}\" --src-root \"{rawdir}\" --dst-root \"{filtereddir}\""
+      verbose: true
+    output_var: copied_rasters

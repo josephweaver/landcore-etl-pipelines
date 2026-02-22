@@ -29,8 +29,8 @@ steps:
     args:
       archive_glob: "{archivedir}/*.7z"
       out: "{rawdir}"
-      include_glob: "**/WELD_*_2010_field_segments
-**/WELD_*_2010_field_segments.hdr
-"
+      include_glob: |
+        **/WELD_*_2010_field_segments
+        **/WELD_*_2010_field_segments.*
       overwrite: true
     output_var: extracted_raw
