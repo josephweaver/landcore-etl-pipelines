@@ -1,0 +1,48 @@
+project_id: land_core
+shared_with_projects:
+  - gee_lee
+
+requires_pipelines:
+  - pipelines/prism/vpdmax_download.yml
+  - pipelines/yanroy/build.yml
+
+vars:
+  dataset_id: stage.prism_vpdmax_tile_field_aggregate_v1
+  name: prism_vpdmax_tile_field_aggregate
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  prism_dir: "{env.basedir}/data/prism/vpdmax/monthly/raw"
+  # Expected single vector layer containing all YanRoy field polygons.
+  yanroy_polygons_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
+  raster_glob: "{prism_dir}/**/*vpdmax*20????*.tif"
+  year_month_regex: "(20\\d{2}(0[1-9]|1[0-2]))"
+  per_raster_outdir: "{workdir}/by_raster"
+  combined_out_csv: "{workdir}/vpdmax_tile_field_monthly.csv"
+  value_prefix: vpdmax
+  aggregations: "mean,max"
+  tile_field_id_field: tile_field_id
+
+steps:
+  - name: "{sys.step.NN}_aggregate_each_vpdmax_raster"
+    plugin: geo/geo_county_raster_aggregate
+    args:
+      raster_path: "{item}"
+      county_path: "{yanroy_polygons_path}"
+      output_path: "{per_raster_outdir}/{item_stem}.csv"
+      county_id_field: "{tile_field_id_field}"
+      aggregations: "{aggregations}"
+      value_prefix: "{value_prefix}"
+      day_from_filename_regex: "{year_month_regex}"
+      day_from_filename_group: 1
+      verbose: true
+    foreach_glob: "{raster_glob}"
+    foreach_kind: files
+    output_var: raster_stats
+
+  - name: "{sys.step.NN}_combine_raster_stats"
+    plugin: combine_files
+    args:
+      input_glob: "{per_raster_outdir}/*.csv"
+      output_file: "{combined_out_csv}"
+      format: csv
+    output_var: combined_stats
