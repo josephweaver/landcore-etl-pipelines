@@ -1,11 +1,7 @@
 project_id: land_core
-shared_with_projects:
-  - gee_lee
-
 requires_pipelines:
   - pipelines/yanroy/download.yml
   - pipelines/tiger/state.yml
-
 vars:
   dataset_id: stage.yanroy_filtered_v1
   name: yanroy_build
@@ -22,7 +18,9 @@ vars:
   states_csv_path: "{metadir}/states.of.interest.csv"
   filtered_states_path: "{workdir}/states/states.of.interest.gpkg"
   raster_filter_outdir: "{workdir}/raster_filter"
-
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
 steps:
   - name: "{sys.step.NN}_download_states_of_interest"
     plugin: gdrive_download
@@ -34,7 +32,6 @@ steps:
       recursive: false
       no_clobber: true
     output_var: staged_states_csv
-
   - name: "{sys.step.NN}_states_csv_to_values"
     plugin: exec_script
     args:
@@ -42,7 +39,6 @@ steps:
       script_args: "--csv \"{states_csv_path}\""
       verbose: true
     output_var: states_values
-
   - name: "{sys.step.NN}_filter_tiger_states"
     plugin: geo_vector_filter
     args:
@@ -53,17 +49,15 @@ steps:
       values: "{states_values.stdout}"
       case_insensitive: true
     output_var: filtered_states
-
   - name: "{sys.step.NN}_select_yanroy_rasters"
     plugin: geo_filter_rasters_by_polygon
     args:
       raster_dir: "{rawdir}"
       selector_path: "{filtered_states_path}"
       output_dir: "{raster_filter_outdir}"
-      raster_extensions: ".hdr"
+      raster_extensions: .hdr
       fail_on_missing_crs: false
     output_var: selected_rasters
-
   - name: "{sys.step.NN}_materialize_filtered_rasters"
     plugin: exec_script
     args:
