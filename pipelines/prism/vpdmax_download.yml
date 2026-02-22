@@ -7,12 +7,12 @@ vars:
   year_end: 2025
   years: "{expr.range(year_start, year_end)}"
   prism_filename_glob: "*"
-  workdir: "{env.workdir}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  workdir: "{env.workdir}/{sys.job.name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
   archivedir: "{env.datadir}/prism/vpdmax/monthly/archive"
   extractdir: "{env.datadir}/prism/vpdmax/monthly/raw"
 dirs:
-  workdir: "{env.workdir}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  workdir: "{env.workdir}/{sys.job.name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
 steps:
   - name: "{sys.step.NN}_stage_prism_ftp"
