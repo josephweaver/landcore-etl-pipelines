@@ -3,7 +3,6 @@ vars:
   dataset_id: raw.yanroy_download_v1
   name: yanroy_download
   gdrive_remote: gdrive
-  gdrive_shared_drive: "Land Core Risk Model Development"
   gdrive_src: Data/Field_Boundaries
   gdrive_glob: ReleaseData.7z
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
@@ -19,7 +18,6 @@ steps:
     plugin: gdrive_download
     args:
       remote: "{gdrive_remote}"
-      shared_drive: "{gdrive_shared_drive}"
       src: "{gdrive_src}"
       glob: "{gdrive_glob}"
       out: "{archivedir}"
