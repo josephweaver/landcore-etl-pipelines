@@ -1,0 +1,63 @@
+project_id: land_core
+shared_with_projects:
+  - gee_lee
+
+requires_pipelines:
+  - pipelines/yanroy/build.yml
+
+vars:
+  dataset_id: serve.yanroy_publish_v1
+  name: yanroy_serve
+  target_crs: EPSG:4326
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  yanroy_dir: "{env.basedir}/data/yanroy"
+  fields_dir: "{yanroy_dir}/filtered"
+  tiles_csv: "{yanroy_dir}/meta/tiles.of.interest.csv"
+  polygon_combined_path: "{yanroy_dir}/polygons/field_polygons.gpkg"
+  serve_dir: "{yanroy_dir}/serve"
+  serve_polygons_path: "{serve_dir}/field_polygons_4326.gpkg"
+  serve_ndjson: "{serve_dir}/field_polygons.ndjson"
+  serve_ndjson_summary: "{serve_dir}/field_polygons.ndjson.summary.json"
+  serve_mbtiles: "{serve_dir}/field_polygons.mbtiles"
+  serve_mbtiles_summary: "{serve_dir}/field_polygons.mbtiles.summary.json"
+  serve_keys_csv: "{serve_dir}/google_maps_field_keys.csv"
+  serve_keys_summary: "{serve_dir}/google_maps_field_keys.summary.json"
+  vector_tile_layer_name: yanroy_fields
+  vector_tile_min_zoom: 6
+  vector_tile_max_zoom: 14
+  tippecanoe_bin: tippecanoe
+
+steps:
+  - name: "{sys.step.NN}_reproject_polygons_for_serve"
+    plugin: geo/geo_vector_reproject
+    args:
+      input_path: "{polygon_combined_path}"
+      output_path: "{serve_polygons_path}"
+      target_crs: "{target_crs}"
+      overwrite: true
+    output_var: serve_polygons
+
+  - name: "{sys.step.NN}_export_ndjson"
+    plugin: exec_script
+    args:
+      script: "scripts/yanroy/export_field_polygons_ndjson.py"
+      script_args: "--input-vector \"{serve_polygons_path}\" --output-ndjson \"{serve_ndjson}\" --summary-json \"{serve_ndjson_summary}\" --id-field tile_field_id --tile-field tile_id --field-field field_id --source-name-field source_name --verbose"
+      verbose: true
+    output_var: ndjson_export
+
+  - name: "{sys.step.NN}_build_vector_tiles"
+    plugin: exec_script
+    args:
+      script: "scripts/yanroy/build_vector_tiles_with_tippecanoe.py"
+      script_args: "--input-ndjson \"{serve_ndjson}\" --output-mbtiles \"{serve_mbtiles}\" --layer-name \"{vector_tile_layer_name}\" --minimum-zoom {vector_tile_min_zoom} --maximum-zoom {vector_tile_max_zoom} --tippecanoe-bin \"{tippecanoe_bin}\" --summary-json \"{serve_mbtiles_summary}\" --verbose"
+      verbose: true
+    output_var: vector_tiles
+
+  - name: "{sys.step.NN}_build_google_maps_field_keys"
+    plugin: exec_script
+    args:
+      script: "scripts/yanroy/build_google_maps_field_keys.py"
+      script_args: "--tiles-csv \"{tiles_csv}\" --fields-dir \"{fields_dir}\" --output-csv \"{serve_keys_csv}\" --summary-json \"{serve_keys_summary}\" --verbose"
+      verbose: true
+    output_var: google_maps_keys
