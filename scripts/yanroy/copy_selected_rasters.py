@@ -51,6 +51,8 @@ def main() -> int:
             candidates = [rel]
             if rel.lower().endswith(".hdr"):
                 candidates.append(rel[:-4])
+            else:
+                candidates.append(f"{rel}.hdr")
             for rel_path in candidates:
                 key = rel_path.lower()
                 if key in seen:
