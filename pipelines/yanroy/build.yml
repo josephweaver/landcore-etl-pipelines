@@ -57,6 +57,7 @@ steps:
       output_dir: "{raster_filter_outdir}"
       raster_extensions: .hdr
       fail_on_missing_crs: false
+      verbose: true
     output_var: selected_rasters
   - name: "{sys.step.NN}_materialize_filtered_rasters"
     plugin: exec_script
