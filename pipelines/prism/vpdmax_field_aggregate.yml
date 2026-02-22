@@ -1,0 +1,34 @@
+project_id: land_core
+shared_with_projects:
+  - gee_lee
+
+vars:
+  dataset_id: stage.prism_vpdmax_field_year_v1
+  name: prism_vpdmax_field_aggregate
+  # Start from YanRoy states->tiles outputs.
+  # TODO: if tiles.of.interest.csv path differs by environment, override this var.
+  tiles_csv: "{env.basedir}/data/yanroy/meta/tiles.of.interest.csv"
+  prism_dir: "{env.basedir}/data/prism/vpdmax/monthly/raw"
+  months: "7,8"
+  year_start: 2005
+  year_end: 2025
+
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  outdir: "{workdir}/field_vpdmax"
+
+steps:
+  - name: "{sys.step.NN}_plan_vpdmax_field_tasks"
+    plugin: exec_script.py
+    args:
+      script: "scripts/prism/plan_vpdmax_field_aggregation.py"
+      script_args: "--prism-dir \"{prism_dir}\" --tiles-csv \"{tiles_csv}\" --output-dir \"{outdir}\" --months \"{months}\" --year-start {year_start} --year-end {year_end} --verbose"
+      verbose: true
+    output_var: plan
+
+  - name: "{sys.step.NN}_next_step_todo"
+    plugin: echo.py
+    args:
+      message: "Scaffold only: implement raster->field aggregation step next (vpdmax_7/vpdmax_8 by tile_field_ID,year)."
+
