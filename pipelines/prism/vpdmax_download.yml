@@ -1,46 +1,36 @@
 project_id: land_core
 vars:
-  name: vpdmax_download
-  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  dataset_id: raw.prism_vpdmax_monthly_800m_download_v1
+  name: prism_vpdmax_download
+  prism_base_url: ftp://prism.oregonstate.edu/time_series/us/an/800m/vpdmax/monthly
+  year_start: 2005
+  year_end: 2025
+  years: "{expr.range(year_start, year_end)}"
+  prism_filename_glob: "*"
+  workdir: "{env.workdir}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
-  basedir: "{env.basedir}/land_core"
-  owner: land-core
-  pipeline_assets_repo_url: https://github.com/josephweaver/landcore-etl-pipelines.git
-  pipeline_assets_local_repo_path: ../landcore-etl-pipelines
-  pipeline_assets_project_key: land_core
-  pipeline_assets_pipelines_dir: pipelines
-  pipeline_assets_scripts_dir: scripts
-  data_dictionary_repo_url: https://github.com/land-core/landcore-data-catalog.git
-  states_of_interest:
-    - IL
-    - MN
-    - WI
-    - OH
-    - SD
-    - IA
-    - IN
-    - MI
-    - MO
-  pipeline_asset_sources:
-    -
-      project_key: land_core
-      repo_url: https://github.com/josephweaver/landcore-etl-pipelines.git
-      local_repo_path: ../landcore-etl-pipelines
-      pipelines_dir: pipelines
-      scripts_dir: scripts
-      ref: main
-      priority: 100
-    -
-      project_key: shared
-      repo_url: https://github.com/josephweaver/shared-etl-pipelines.git
-      local_repo_path: ../shared-etl-pipelines
-      pipelines_dir: pipelines
-      scripts_dir: scripts
-      ref: main
-      priority: 200
+  archivedir: "{env.datadir}/prism/vpdmax/monthly/archive"
+  extractdir: "{env.datadir}/prism/vpdmax/monthly/raw"
 dirs:
-  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  workdir: "{env.workdir}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
 steps:
-  - name: echo
-    plugin: echo
+  - name: "{sys.step.NN}_stage_prism_ftp"
+    plugin: ftp_download_tree
+    args:
+      url: "{prism_base_url}/{item}"
+      out: "{archivedir}/{item}"
+      recursive: true
+      filename_glob: "{prism_filename_glob}"
+      overwrite: false
+      timeout_seconds: 120
+    foreach: years
+    output_var: staged_raw
+  - name: "{sys.step.NN}_extract_prism_archives"
+    plugin: archive_extract
+    args:
+      archive_glob: "{archivedir}/{item}/**/*.zip"
+      out: "{extractdir}/{item}"
+      overwrite: true
+    foreach: years
+    output_var: extracted_raw
