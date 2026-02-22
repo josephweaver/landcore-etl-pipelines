@@ -94,7 +94,6 @@ steps:
     foreach_glob: "{filtereddir}/**/WELD_*_2010_field_segments"
     foreach_kind: files
     output_var: field_polygons
-
   - name: "{sys.step.NN}_combine_field_polygons"
     plugin: geo/geo_vector_combine
     args:
