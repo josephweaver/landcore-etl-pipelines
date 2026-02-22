@@ -5,6 +5,7 @@ requires_pipelines:
 vars:
   dataset_id: stage.yanroy_filtered_v1
   name: yanroy_build
+  target_crs: EPSG:5070
   gdrive_remote: gdrive
   gdrive_meta_src: Data/ETL/Meta
   gdrive_meta_glob: states.of.interest.csv
@@ -14,9 +15,11 @@ vars:
   rawdir: "{yanroy_dir}/raw"
   metadir: "{yanroy_dir}/meta"
   filtereddir: "{yanroy_dir}/filtered"
+  polygon_dir: "{yanroy_dir}/polygons"
   tiger_state_path: "{env.basedir}/data/tiger/state/extract/tl_2025_us_state.shp"
   states_csv_path: "{metadir}/states.of.interest.csv"
   filtered_states_path: "{workdir}/states/states.of.interest.gpkg"
+  filtered_states_5070_path: "{workdir}/states/states.of.interest.5070.gpkg"
   raster_filter_outdir: "{workdir}/raster_filter"
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
@@ -49,11 +52,19 @@ steps:
       values: "{states_values.stdout}"
       case_insensitive: true
     output_var: filtered_states
+  - name: "{sys.step.NN}_reproject_filtered_states"
+    plugin: geo/geo_vector_reproject
+    args:
+      input_path: "{filtered_states_path}"
+      output_path: "{filtered_states_5070_path}"
+      target_crs: "{target_crs}"
+      overwrite: true
+    output_var: filtered_states_5070
   - name: "{sys.step.NN}_select_yanroy_rasters"
     plugin: geo_filter_rasters_by_polygon
     args:
       raster_dir: "{rawdir}"
-      selector_path: "{filtered_states_path}"
+      selector_path: "{filtered_states_5070_path}"
       output_dir: "{raster_filter_outdir}"
       raster_extensions: .hdr
       fail_on_missing_crs: false
@@ -66,3 +77,18 @@ steps:
       script_args: "--selected-csv \"{selected_rasters.selected_rasters_csv}\" --src-root \"{rawdir}\" --dst-root \"{filtereddir}\""
       verbose: true
     output_var: copied_rasters
+  - name: "{sys.step.NN}_polygonize_field_id_rasters"
+    plugin: geo/geo_raster_polygonize
+    args:
+      input_raster: "{item}"
+      output_path: "{polygon_dir}/{item_stem}.gpkg"
+      value_field: field_id
+      exclude_values: 0
+      selector_path: "{filtered_states_5070_path}"
+      filter_predicate: intersects
+      target_crs: "{target_crs}"
+      dissolve_by_value: true
+      overwrite: true
+    foreach_glob: "{filtereddir}/**/WELD_*_2010_field_segments"
+    foreach_kind: files
+    output_var: field_polygons
