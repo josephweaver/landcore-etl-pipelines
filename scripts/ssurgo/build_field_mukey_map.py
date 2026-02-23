@@ -25,6 +25,11 @@ def _to_text(value: Any) -> str:
     return str(value)
 
 
+def _vlog(verbose: bool, message: str) -> None:
+    if verbose:
+        print(f"[build_field_mukey_map] {message}")
+
+
 def _parse_glob_patterns(raw: str) -> list[str]:
     out: list[str] = []
     seen: set[str] = set()
@@ -94,6 +99,7 @@ def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbos
 
     frames: list[Any] = []
     input_files: list[str] = []
+    _vlog(verbose, f"loading field polygons fields_path='{fields_path}' fields_glob='{fields_glob}'")
 
     if str(fields_path or "").strip():
         p = _resolve(fields_path)
@@ -111,6 +117,7 @@ def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbos
         matches = sorted(glob.glob(str(fields_glob), recursive=True))
         if not matches:
             matches = sorted(glob.glob(str((_resolve(".") / str(fields_glob)).as_posix()), recursive=True))
+        _vlog(verbose, f"fields_glob matched files={len(matches)}")
         for raw in matches:
             p = Path(raw)
             if not p.is_file():
@@ -131,8 +138,7 @@ def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbos
     fields = _derive_field_id_column(fields, field_id_field, verbose)
 
     fields = fields[fields.geometry.notna() & ~fields.geometry.is_empty].copy()
-    if verbose:
-        print(f"[build_field_mukey_map] loaded fields rows={len(fields)} files={len(input_files)}")
+    _vlog(verbose, f"loaded field polygons rows={len(fields)} files={len(input_files)}")
     return fields, input_files
 
 
@@ -187,6 +193,7 @@ def build_field_mukey_map(
         raise RuntimeError("build_field_mukey_map requires geopandas and pandas") from exc
 
     fields, input_files = _load_fields(fields_path, fields_glob, field_id_field, verbose)
+    _vlog(verbose, "resolving SSURGO inputs")
     ssurgo_files: list[Path] = []
     ssurgo_path_resolved = _resolve(ssurgo_path) if str(ssurgo_path or "").strip() else None
     if ssurgo_path_resolved is not None:
@@ -217,6 +224,7 @@ def build_field_mukey_map(
                     ssurgo_files.append(p)
     if not ssurgo_files:
         raise FileNotFoundError("no SSURGO files found via ssurgo_path/ssurgo_glob")
+    _vlog(verbose, f"SSURGO input candidates files={len(ssurgo_files)}")
 
     ssurgo_frames: list[Any] = []
     ssurgo_loaded_files: list[str] = []
@@ -231,7 +239,12 @@ def build_field_mukey_map(
             layer_candidates.append(str(ssurgo_layer or "").strip())
         layer_candidates.extend(["MUPOLYGON", "mupolygon", "MapunitPoly", "mapunit", "ssurgo_mapunit"])
         if p.suffix.lower() in {".gdb", ".gpkg"}:
-            layer_candidates.extend(_list_vector_layers(p))
+            discovered = _list_vector_layers(p)
+            layer_candidates.extend(discovered)
+            _vlog(
+                verbose,
+                f"discovered container layers file={p.as_posix()} count={len(discovered)}",
+            )
         layer_candidates.append("")  # final fallback: default layer for file
         deduped_candidates: list[str] = []
         seen_layer_keys: set[str] = set()
@@ -245,6 +258,7 @@ def build_field_mukey_map(
         loaded = False
         last_err = ""
         for layer_name in deduped_candidates:
+            _vlog(verbose, f"trying SSURGO file={p.as_posix()} layer={layer_name or '<default>'}")
             try:
                 if layer_name:
                     cand = gpd.read_file(p, layer=layer_name)
@@ -275,12 +289,11 @@ def build_field_mukey_map(
             ssurgo_frames.append(cand)
             ssurgo_loaded_files.append(p.as_posix())
             loaded = True
-            if verbose:
-                lname = layer_name or "<default>"
-                print(
-                    f"[build_field_mukey_map] loaded ssurgo file={p.as_posix()} "
-                    f"layer={lname} mukey_col={actual_mukey_col} rows={len(cand)}"
-                )
+            lname = layer_name or "<default>"
+            _vlog(
+                verbose,
+                f"loaded ssurgo file={p.as_posix()} layer={lname} mukey_col={actual_mukey_col} rows={len(cand)}",
+            )
             break
         if not loaded and verbose:
             print(f"[build_field_mukey_map][WARN] no usable mukey polygon layer in {p.as_posix()} err={last_err[:200]}")
@@ -294,15 +307,20 @@ def build_field_mukey_map(
         ssurgo = gpd.GeoDataFrame(ssurgo, geometry="geometry", crs=ssurgo_frames[0].crs)
 
     if target_crs.strip():
+        _vlog(verbose, f"projecting inputs to target_crs={target_crs}")
         fields = fields.to_crs(target_crs)
         ssurgo = ssurgo.to_crs(target_crs)
     else:
+        _vlog(verbose, f"projecting fields to SSURGO CRS={ssurgo.crs}")
         fields = fields.to_crs(ssurgo.crs)
 
     ssurgo = ssurgo[[mukey_field, "geometry"]].copy()
     ssurgo[mukey_field] = ssurgo[mukey_field].map(_to_text)
     ssurgo = ssurgo[ssurgo.geometry.notna() & ~ssurgo.geometry.is_empty].copy()
 
+    _vlog(verbose, f"prepared SSURGO polygons rows={len(ssurgo)}")
+
+    _vlog(verbose, "running spatial join (intersects)")
     joined = gpd.sjoin(
         fields[[field_id_field, "source_name", "geometry"]],
         ssurgo,
@@ -311,6 +329,7 @@ def build_field_mukey_map(
     )
     if joined.empty:
         raise RuntimeError("no field polygons intersect SSURGO polygons")
+    _vlog(verbose, f"spatial join rows={len(joined)}")
     # Compute overlap area and percent overlap of each field polygon by mukey.
     field_src = fields[[field_id_field, "source_name", "geometry"]].copy()
     field_src[field_id_field] = field_src[field_id_field].map(_to_text)
@@ -321,9 +340,11 @@ def build_field_mukey_map(
     ssurgo_src[mukey_field] = ssurgo_src[mukey_field].map(_to_text)
     ssurgo_src = ssurgo_src[ssurgo_src[mukey_field].astype(str).str.len() > 0].copy()
 
+    _vlog(verbose, "running polygon overlay (intersection)")
     intersections = gpd.overlay(field_src, ssurgo_src, how="intersection")
     if intersections.empty:
         raise RuntimeError("field and SSURGO geometries intersect by bbox but produced no polygon intersections")
+    _vlog(verbose, f"overlay rows={len(intersections)}")
     intersections["overlap_area"] = intersections.geometry.area
 
     grouped_pairs = (
@@ -392,6 +413,7 @@ def build_field_mukey_map(
     output_csv_path.parent.mkdir(parents=True, exist_ok=True)
     output_long_path.parent.mkdir(parents=True, exist_ok=True)
     summary_path.parent.mkdir(parents=True, exist_ok=True)
+    _vlog(verbose, f"writing outputs csv={output_csv_path.as_posix()} long_csv={output_long_path.as_posix()}")
 
     with output_long_path.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(
@@ -461,11 +483,11 @@ def build_field_mukey_map(
         "target_crs": target_crs or str(ssurgo.crs),
     }
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    if verbose:
-        print(
-            f"[build_field_mukey_map] fields={summary['counts']['unique_fields']} "
-            f"pairs={summary['counts']['unique_field_mukey_pairs']}"
-        )
+    _vlog(
+        verbose,
+        f"complete unique_fields={summary['counts']['unique_fields']} "
+        f"unique_pairs={summary['counts']['unique_field_mukey_pairs']}",
+    )
     return summary
 
 

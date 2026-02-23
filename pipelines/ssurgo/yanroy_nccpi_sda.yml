@@ -19,10 +19,12 @@ vars:
   sda_chunk_size: 500
   sda_sleep_seconds: 0.2
   outdir: "{workdir}/ssurgo_nccpi"
+  per_field_outdir: "{outdir}/by_field_poly"
   yanroy_polygon_glob: "{env.basedir}/data/yanroy/polygons/WELD_*_2010_field_segments.gpkg"
   field_mukey_csv: "{outdir}/field_mukey_map.csv"
   field_mukey_long_csv: "{outdir}/field_mukey_pairs.csv"
   field_mukey_summary_json: "{outdir}/field_mukey_summary.json"
+  field_mukey_long_glob: "{per_field_outdir}/*.field_mukey_pairs.csv"
   valu1_csv: "{outdir}/valu1_by_mukey.csv"
   field_valu1_csv: "{outdir}/field_nccpi_long.csv"
   valu1_summary_json: "{outdir}/valu1_download_summary.json"
@@ -34,9 +36,20 @@ steps:
     plugin: exec_script
     args:
       script: scripts/ssurgo/build_field_mukey_map.py
-      script_args: "--fields-path \"{yanroy_polygon_path}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-glob \"{ssurgo_polygon_glob}\" --ssurgo-layer \"{ssurgo_layer}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{field_mukey_csv}\" --output-long-csv \"{field_mukey_long_csv}\" --summary-json \"{field_mukey_summary_json}\" --target-crs \"{target_crs}\" --verbose"
+      script_args: "--fields-path \"{item}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-glob \"{ssurgo_polygon_glob}\" --ssurgo-layer \"{ssurgo_layer}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{per_field_outdir}/{item_stem}.field_mukey_map.csv\" --output-long-csv \"{per_field_outdir}/{item_stem}.field_mukey_pairs.csv\" --summary-json \"{per_field_outdir}/{item_stem}.field_mukey_summary.json\" --target-crs \"{target_crs}\" --verbose"
       verbose: true
+    foreach_glob: "{yanroy_polygon_glob}"
+    foreach_kind: files
+    parallel_with: field_mukey_fanout
     output_var: field_mukey
+  - name: "{sys.step.NN}_combine_field_mukey_long"
+    plugin: combine_files
+    args:
+      input_glob: "{field_mukey_long_glob}"
+      output_file: "{field_mukey_long_csv}"
+      format: csv
+      verbose: true
+    output_var: field_mukey_combined
   - name: "{sys.step.NN}_download_valu1_nccpi_by_mukey"
     plugin: exec_script
     args:
