@@ -1,7 +1,7 @@
 project_id: land_core
 requires_pipelines:
   - pipelines/yanroy/build.yml
-  - pipelines/ssurgo/yanroy_prefilter_from_facts.yml
+  - pipelines/yanroy/yanroy_prefilter_from_facts.yml
 vars:
   dataset_id: stage.ssurgo_field_nccpi_v1
   name: ssurgo_yanroy_nccpi_sda

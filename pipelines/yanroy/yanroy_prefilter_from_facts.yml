@@ -3,10 +3,15 @@ requires_pipelines:
   - pipelines/yanroy/build.yml
   - pipelines/ssurgo/conus_download.yml
 vars:
-  dataset_id: stage.ssurgo_yanroy_prefilter_from_facts_v1
+  dataset_id: stage.yanroy_raster_facts_v1
   name: ssurgo_yanroy_prefilter_from_facts
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
+  yanroy_meta_dir: "{env.basedir}/data/yanroy/meta"
+  persisted_raster_facts_csv: "{yanroy_meta_dir}/filtered_raster_facts.csv"
+  persist_summary_json: "{workdir}/persist_filtered_raster_facts.summary.json"
+  raster_facts_source_csv: ""
+  raster_facts_search_glob_csv: "{env.workdir}/**/filtered_raster_facts.csv,{env.basedir}/data/yanroy/**/filtered_raster_facts.csv"
   raster_facts_csv: "{env.basedir}/data/yanroy/meta/filtered_raster_facts.csv"
   raster_facts_bounds_field: bounds
   raster_facts_crs_field: crs
@@ -24,10 +29,17 @@ dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
 steps:
+  - name: "{sys.step.NN}_persist_filtered_raster_facts"
+    plugin: exec_script
+    args:
+      script: scripts/yanroy/persist_filtered_raster_facts.py
+      script_args: "--source-csv \"{raster_facts_source_csv}\" --search-glob-csv \"{raster_facts_search_glob_csv}\" --output-csv \"{persisted_raster_facts_csv}\" --summary-json \"{persist_summary_json}\" --allow-missing --verbose"
+      verbose: true
+    output_var: persisted_raster_facts
   - name: "{sys.step.NN}_prefilter_ssurgo_from_raster_facts"
     plugin: exec_script
     args:
       script: scripts/ssurgo/prefilter_mupolygon_from_raster_facts.py
-      script_args: "--raster-facts-csv \"{raster_facts_csv}\" --bounds-field \"{raster_facts_bounds_field}\" --crs-field \"{raster_facts_crs_field}\" --path-field \"{raster_facts_path_field}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-layer \"{ssurgo_layer}\" --mukey-field \"{mukey_field}\" --states-csv \"{states_of_interest_csv}\" --state-field \"{ssurgo_state_field}\" --output-gpkg \"{prefiltered_gpkg}\" --output-layer \"{prefiltered_layer}\" --summary-json \"{summary_json}\" --verbose"
+      script_args: "--raster-facts-csv \"{persisted_raster_facts_csv}\" --bounds-field \"{raster_facts_bounds_field}\" --crs-field \"{raster_facts_crs_field}\" --path-field \"{raster_facts_path_field}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-layer \"{ssurgo_layer}\" --mukey-field \"{mukey_field}\" --states-csv \"{states_of_interest_csv}\" --state-field \"{ssurgo_state_field}\" --output-gpkg \"{prefiltered_gpkg}\" --output-layer \"{prefiltered_layer}\" --summary-json \"{summary_json}\" --verbose"
       verbose: true
     output_var: prefiltered_ssurgo
