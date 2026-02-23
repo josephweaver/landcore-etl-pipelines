@@ -13,7 +13,13 @@ TILE_RE = re.compile(r"^[A-Za-z]\d{2}[A-Za-z]\d{2}$")
 
 
 def _resolve(path_text: str) -> Path:
-    return Path(str(path_text or "")).expanduser().resolve()
+    p = Path(str(path_text or "")).expanduser()
+    # Do not canonicalize absolute paths here; on HPCC, resolving symlinked
+    # mount aliases (e.g. /mnt/scratch -> /mnt/gs21/scratch) can yield
+    # non-existent canonical paths even when the original alias is valid.
+    if p.is_absolute():
+        return p
+    return (Path.cwd() / p).resolve()
 
 
 def _vlog(verbose: bool, message: str) -> None:
