@@ -1,5 +1,23 @@
 ﻿# Fit Pipeline Plan (YanRoy field-level replacement for RiskModel-HPCC)
 
+## Progress Notes (2026-02-23)
+- Completed today:
+  - Reworked SSURGO field->mukey mapper for real YanRoy tile-file inputs:
+    - derives `tile_field_id` when missing,
+    - supports field and SSURGO glob fallbacks,
+    - records many-to-many overlaps via `pct_field_overlap`.
+  - Recreated SSURGO download pipelines:
+    - `pipelines/ssurgo/state_download.yml` (manual URL list workflow),
+    - `pipelines/ssurgo/conus_download.yml` (single CONUS URL workflow).
+  - Added deterministic HTTP output filename support (`out_file`) in `web_download_list`; CONUS pipeline now writes `{rawdir}/ssurgo_conus.zip`.
+  - Updated SSURGO glob defaults to include `.gdb`, `.gpkg`, and likely mapunit `.shp` files.
+- Current blocker:
+  - `pipelines/ssurgo/yanroy_nccpi_sda.yml` step 1 still requires local SSURGO polygon data in `{env.basedir}/data/ssurgo/state/extract`; SDA step 2 is not the failing component.
+- Immediate next actions:
+  - Run `pipelines/ssurgo/conus_download.yml` (or `state_download.yml`) to populate local SSURGO extracts.
+  - Rerun `pipelines/ssurgo/yanroy_nccpi_sda.yml` step 0 then step 1.
+  - Verify `field_mukey_pairs.csv` overlap percentages before NCCPI joins.
+
 ## Objective
 Replace:
 - `RiskModel-HPCC/controller/controller.R`
@@ -101,6 +119,8 @@ Pipeline: `pipelines/risk_model/ssurgo_nccpi_ingest.yml`
 - [ ] Include Valu1 coverage for corn/soy/all as requested:
   - reference: `https://www.nrcs.usda.gov/sites/default/files/2022-08/gSSURGO%20Value%20Added%20Look%20Up%20Valu1%20Table%20Column%20Descriptions.pdf`
   - initial extraction should retain needed Valu1 columns so we can derive NCCPI variants without re-extraction.
+- [x] Build/validate field<->mukey crosswalk script with percent field overlap for many-to-many relationships.
+- [x] Create SSURGO download pipelines for both manual state URL lists and single CONUS HTTP archive.
 
 ### 4) PRISM vpdmax ingest/aggregate (active)
 Pipelines:
