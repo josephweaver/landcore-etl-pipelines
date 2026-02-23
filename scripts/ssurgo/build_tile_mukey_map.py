@@ -181,6 +181,74 @@ def _read_ssurgo_with_layer_fallback(gpd, *, path: Path, layer: str, bbox: tuple
     )
 
 
+def _pairs_from_mukey_raster(
+    *,
+    tile_boxes,
+    raster_path: Path,
+    mukey_field: str,
+    verbose: bool,
+):
+    import numpy as np
+    import pandas as pd
+    import rasterio
+    from rasterio.windows import from_bounds
+
+    with rasterio.open(raster_path) as ds:
+        if ds.crs is None:
+            raise RuntimeError("MUKEY raster missing CRS")
+        boxes = tile_boxes
+        if boxes.crs != ds.crs:
+            boxes = boxes.to_crs(ds.crs)
+        nodata = ds.nodata
+        tile_to_mukeys: dict[str, set[str]] = {}
+        for row in boxes.itertuples(index=False):
+            tile = str(getattr(row, "tile", "") or "").strip()
+            geom = getattr(row, "geometry", None)
+            if not tile or geom is None or geom.is_empty:
+                continue
+            minx, miny, maxx, maxy = [float(v) for v in geom.bounds]
+            win = from_bounds(minx, miny, maxx, maxy, transform=ds.transform)
+            if win.width <= 0 or win.height <= 0:
+                continue
+            arr = ds.read(1, window=win, masked=True)
+            if arr is None or arr.size == 0:
+                continue
+            if hasattr(arr, "compressed"):
+                vals = arr.compressed()
+            else:
+                vals = np.asarray(arr).ravel()
+                if nodata is not None:
+                    vals = vals[vals != nodata]
+            if vals.size == 0:
+                continue
+            clean: set[str] = set()
+            for v in vals:
+                try:
+                    fv = float(v)
+                except Exception:  # noqa: BLE001
+                    continue
+                if nodata is not None and fv == float(nodata):
+                    continue
+                if np.isnan(fv):
+                    continue
+                iv = int(fv)
+                if iv <= 0:
+                    continue
+                clean.add(str(iv))
+            if clean:
+                tile_to_mukeys.setdefault(tile, set()).update(clean)
+
+    rows: list[dict[str, str]] = []
+    for tile in sorted(tile_to_mukeys.keys()):
+        for mukey in sorted(tile_to_mukeys[tile]):
+            rows.append({"tile": tile, mukey_field: mukey})
+    if not rows:
+        raise RuntimeError("no MUKEY values extracted from raster for selected tile boxes")
+    if verbose:
+        print(f"[build_tile_mukey_map] raster tile->mukey pairs={len(rows)} tiles={len(tile_to_mukeys)}")
+    return pd.DataFrame(rows)
+
+
 def build_tile_mukey_map(
     *,
     filtered_csv: str,
@@ -261,58 +329,81 @@ def build_tile_mukey_map(
     if not ssurgo_path_res.exists():
         raise FileNotFoundError(f"ssurgo path not found: {ssurgo_path_res.as_posix()}")
 
-    # Use global bbox from selected tile boxes to reduce SSURGO IO.
-    tb = tuple(float(v) for v in tile_boxes.total_bounds.tolist())
-    ssurgo, ssurgo_layer_used, available_layers = _read_ssurgo_with_layer_fallback(
-        gpd,
-        path=ssurgo_path_res,
-        layer=str(ssurgo_layer or "").strip(),
-        bbox=tb,
-        verbose=verbose,
-    )
-    if verbose:
-        _vlog(
-            verbose,
-            f"loaded SSURGO layer={ssurgo_layer_used} rows={len(ssurgo)} "
-            f"available_layer_count={len(available_layers)}",
+    ssurgo_layer_used = ""
+    available_layers: list[str] = []
+    state_filter_column_used = ""
+    state_filtered_rows = 0
+    ssurgo_rows_loaded = 0
+    src_kind = "polygon"
+    if ssurgo_path_res.suffix.lower() in {".tif", ".tiff", ".img"}:
+        src_kind = "raster"
+        pairs = _pairs_from_mukey_raster(
+            tile_boxes=tile_boxes,
+            raster_path=ssurgo_path_res,
+            mukey_field=mukey_field,
+            verbose=verbose,
         )
-    if ssurgo.empty:
-        raise RuntimeError("no SSURGO rows loaded for selected tile bbox")
+    else:
+        # Use global bbox from selected tile boxes to reduce SSURGO IO.
+        tb = tuple(float(v) for v in tile_boxes.total_bounds.tolist())
+        ssurgo, ssurgo_layer_used, available_layers = _read_ssurgo_with_layer_fallback(
+            gpd,
+            path=ssurgo_path_res,
+            layer=str(ssurgo_layer or "").strip(),
+            bbox=tb,
+            verbose=verbose,
+        )
+        if verbose:
+            _vlog(
+                verbose,
+                f"loaded SSURGO layer={ssurgo_layer_used} rows={len(ssurgo)} "
+                f"available_layer_count={len(available_layers)}",
+            )
+        if ssurgo.empty:
+            raise RuntimeError("no SSURGO rows loaded for selected tile bbox")
+        ssurgo_rows_loaded = int(len(ssurgo))
 
-    by_lower = {str(c).lower(): c for c in ssurgo.columns}
-    actual_mukey_col = by_lower.get(str(mukey_field).lower())
-    if actual_mukey_col is None:
-        raise ValueError(f"mukey field not found in SSURGO layer; requested={mukey_field}, available={list(ssurgo.columns)}")
+        by_lower = {str(c).lower(): c for c in ssurgo.columns}
+        actual_mukey_col = by_lower.get(str(mukey_field).lower())
+        if actual_mukey_col is None:
+            raise ValueError(
+                f"mukey field not found in SSURGO layer; requested={mukey_field}, available={list(ssurgo.columns)}"
+            )
 
-    ssurgo, state_filter_column_used, state_filtered_rows = _apply_state_filter(
-        ssurgo,
-        states_csv=states_csv,
-        state_field=state_field,
-        verbose=verbose,
-    )
-    if ssurgo.empty:
-        raise RuntimeError("SSURGO became empty after state filter")
+        ssurgo, state_filter_column_used, state_filtered_rows = _apply_state_filter(
+            ssurgo,
+            states_csv=states_csv,
+            state_field=state_field,
+            verbose=verbose,
+        )
+        if ssurgo.empty:
+            raise RuntimeError("SSURGO became empty after state filter")
 
-    ssurgo = ssurgo[[actual_mukey_col, "geometry"]].copy()
-    if actual_mukey_col != mukey_field:
-        ssurgo = ssurgo.rename(columns={actual_mukey_col: mukey_field})
-    ssurgo[mukey_field] = ssurgo[mukey_field].map(_to_text)
-    ssurgo = ssurgo[ssurgo.geometry.notna() & ~ssurgo.geometry.is_empty].copy()
-    if ssurgo.crs is None:
-        raise RuntimeError("SSURGO layer missing CRS")
-    if tile_boxes.crs != ssurgo.crs:
-        tile_boxes = tile_boxes.to_crs(ssurgo.crs)
+        ssurgo = ssurgo[[actual_mukey_col, "geometry"]].copy()
+        if actual_mukey_col != mukey_field:
+            ssurgo = ssurgo.rename(columns={actual_mukey_col: mukey_field})
+        ssurgo[mukey_field] = ssurgo[mukey_field].map(_to_text)
+        ssurgo = ssurgo[ssurgo.geometry.notna() & ~ssurgo.geometry.is_empty].copy()
+        if ssurgo.crs is None:
+            raise RuntimeError("SSURGO layer missing CRS")
+        if tile_boxes.crs != ssurgo.crs:
+            tile_boxes = tile_boxes.to_crs(ssurgo.crs)
 
-    joined = gpd.sjoin(ssurgo[[mukey_field, "geometry"]], tile_boxes[["tile", "geometry"]], how="inner", predicate="intersects")
-    if joined.empty:
-        raise RuntimeError("no SSURGO polygons intersect selected tile boxes")
+        joined = gpd.sjoin(
+            ssurgo[[mukey_field, "geometry"]],
+            tile_boxes[["tile", "geometry"]],
+            how="inner",
+            predicate="intersects",
+        )
+        if joined.empty:
+            raise RuntimeError("no SSURGO polygons intersect selected tile boxes")
 
-    pairs = joined[["tile", mukey_field]].copy()
-    pairs[mukey_field] = pairs[mukey_field].astype(str).str.strip()
-    pairs = pairs[pairs[mukey_field] != ""].copy()
-    pairs = pairs.drop_duplicates(subset=["tile", mukey_field]).sort_values(["tile", mukey_field]).reset_index(drop=True)
-    if pairs.empty:
-        raise RuntimeError("tile/mukey join produced no non-empty mukey values")
+        pairs = joined[["tile", mukey_field]].copy()
+        pairs[mukey_field] = pairs[mukey_field].astype(str).str.strip()
+        pairs = pairs[pairs[mukey_field] != ""].copy()
+        pairs = pairs.drop_duplicates(subset=["tile", mukey_field]).sort_values(["tile", mukey_field]).reset_index(drop=True)
+        if pairs.empty:
+            raise RuntimeError("tile/mukey join produced no non-empty mukey values")
 
     counts = pairs.groupby("tile", as_index=False)[mukey_field].count().rename(columns={mukey_field: "mukey_count"})
     counts = counts.sort_values(["tile"]).reset_index(drop=True)
@@ -334,6 +425,7 @@ def build_tile_mukey_map(
             "tile_prefix_len": int(tile_prefix_len),
             "tiles_csv": str(tiles_csv or ""),
             "ssurgo_path": ssurgo_path_res.as_posix(),
+            "ssurgo_source_kind": src_kind,
             "ssurgo_layer": str(ssurgo_layer or ""),
             "ssurgo_layer_used": str(ssurgo_layer_used or ""),
             "mukey_field": str(mukey_field or ""),
@@ -349,7 +441,7 @@ def build_tile_mukey_map(
             "tile_count": int(counts["tile"].nunique()),
             "tile_mukey_pairs": int(len(pairs)),
             "unique_mukey_count": int(pairs[mukey_field].nunique()),
-            "ssurgo_rows_loaded": int(len(ssurgo)),
+            "ssurgo_rows_loaded": int(ssurgo_rows_loaded),
             "state_filtered_rows": int(state_filtered_rows),
         },
         "outputs": {
