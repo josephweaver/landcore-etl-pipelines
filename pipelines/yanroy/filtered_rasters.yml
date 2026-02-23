@@ -19,9 +19,7 @@ vars:
   states_csv_path: "{metadir}/states.of.interest.csv"
   filtered_states_path: "{metadir}/states.of.interest.gpkg"
   filtered_states_5070_path: "{metadir}/states.of.interest.5070.gpkg"
-  raster_filter_outdir: "{workdir}/raster_filter"
-  filtered_raster_facts_csv: "{metadir}/filtered_raster_facts.csv"
-  filtered_raster_facts_summary_json: "{workdir}/filtered_raster_facts.persist.summary.json"
+  filtered_rasters_csv: "{metadir}/filtered.csv"
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
@@ -50,22 +48,10 @@ steps:
     args:
       raster_dir: "{rawdir}"
       selector_path: "{filtered_states_5070_path}"
-      output_dir: "{raster_filter_outdir}"
+      copy_selected: true
+      copy_output_dir: "{filtereddir}"
+      selected_rasters_csv: "{filtered_rasters_csv}"
       raster_extensions: .hdr
       fail_on_missing_crs: false
       verbose: true
     output_var: selected_rasters
-  - name: "{sys.step.NN}_persist_filtered_raster_facts"
-    plugin: exec_script
-    args:
-      script: scripts/yanroy/persist_filtered_raster_facts.py
-      script_args: "--source-csv \"{selected_rasters.selected_rasters_csv}\" --output-csv \"{filtered_raster_facts_csv}\" --summary-json \"{filtered_raster_facts_summary_json}\" --verbose"
-      verbose: true
-    output_var: persisted_filtered_raster_facts
-  - name: "{sys.step.NN}_materialize_filtered_rasters"
-    plugin: exec_script
-    args:
-      script: scripts/yanroy/copy_selected_rasters.py
-      script_args: "--selected-csv \"{selected_rasters.selected_rasters_csv}\" --src-root \"{rawdir}\" --dst-root \"{filtereddir}\""
-      verbose: true
-    output_var: copied_rasters
