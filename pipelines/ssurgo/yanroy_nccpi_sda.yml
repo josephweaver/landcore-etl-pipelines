@@ -40,7 +40,6 @@ steps:
       verbose: true
     foreach_glob: "{yanroy_polygon_glob}"
     foreach_kind: files
-    parallel_with: field_mukey_fanout
     output_var: field_mukey
   - name: "{sys.step.NN}_combine_field_mukey_long"
     plugin: combine_files
