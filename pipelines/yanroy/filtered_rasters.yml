@@ -27,7 +27,7 @@ dirs:
   logdir: "{workdir}/logs"
 steps:
   - name: "{sys.step.NN}_filter_tiger_states"
-    plugin: geo_vector_filter
+    plugin: geo/geo_vector_filter
     args:
       input_path: "{tiger_state_path}"
       output_path: "{filtered_states_path}"
@@ -46,7 +46,7 @@ steps:
       overwrite: true
     output_var: filtered_states_5070
   - name: "{sys.step.NN}_select_yanroy_rasters"
-    plugin: geo_filter_rasters_by_polygon
+    plugin: geo/geo_filter_rasters_by_polygon
     args:
       raster_dir: "{rawdir}"
       selector_path: "{filtered_states_5070_path}"
