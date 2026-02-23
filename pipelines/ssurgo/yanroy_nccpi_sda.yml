@@ -1,45 +1,42 @@
 project_id: land_core
-requires_pipelines:
-  - pipelines/yanroy/build.yml
 vars:
-  dataset_id: stage.ssurgo_field_nccpi_v1
-  name: ssurgo_yanroy_nccpi_sda
-  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
-  logdir: "{workdir}/logs"
-  yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
-  ssurgo_polygon_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mapunit.gpkg"
-  ssurgo_layer: ""
-  field_id_field: tile_field_id
-  mukey_field: mukey
-  target_crs: EPSG:5070
-  sda_endpoint: https://SDMDataAccess.sc.egov.usda.gov/Tabular/post.rest
-  sda_table_name: valu1
-  valu1_columns: "mukey,nccpi3all,nccpi3corn,nccpi3soy"
-  sda_chunk_size: 500
-  sda_sleep_seconds: 0.2
-  outdir: "{workdir}/ssurgo_nccpi"
-  yanroy_polygon_glob: "{env.basedir}/data/yanroy/polygons/WELD_*_2010_field_segments.gpkg"
-  field_mukey_csv: "{outdir}/field_mukey_map.csv"
-  field_mukey_long_csv: "{outdir}/field_mukey_pairs.csv"
-  field_mukey_summary_json: "{outdir}/field_mukey_summary.json"
-  valu1_csv: "{outdir}/valu1_by_mukey.csv"
-  field_valu1_csv: "{outdir}/field_nccpi_long.csv"
-  valu1_summary_json: "{outdir}/valu1_download_summary.json"
+  basedir: "{env.basedir}/land_core"
+  owner: land-core
+  pipeline_assets_repo_url: https://github.com/josephweaver/landcore-etl-pipelines.git
+  pipeline_assets_local_repo_path: ../landcore-etl-pipelines
+  pipeline_assets_project_key: land_core
+  pipeline_assets_pipelines_dir: pipelines
+  pipeline_assets_scripts_dir: scripts
+  data_dictionary_repo_url: https://github.com/land-core/landcore-data-catalog.git
+  states_of_interest:
+    - IL
+    - MN
+    - WI
+    - OH
+    - SD
+    - IA
+    - IN
+    - MI
+    - MO
+  pipeline_asset_sources:
+    -
+      project_key: land_core
+      repo_url: https://github.com/josephweaver/landcore-etl-pipelines.git
+      local_repo_path: ../landcore-etl-pipelines
+      pipelines_dir: pipelines
+      scripts_dir: scripts
+      ref: main
+      priority: 100
+    -
+      project_key: shared
+      repo_url: https://github.com/josephweaver/shared-etl-pipelines.git
+      local_repo_path: ../shared-etl-pipelines
+      pipelines_dir: pipelines
+      scripts_dir: scripts
+      ref: main
+      priority: 200
 dirs:
-  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  workdir: "{env.workdir}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
 steps:
-  - name: "{sys.step.NN}_build_field_mukey_map"
-    plugin: exec_script
-    args:
-      script: scripts/ssurgo/build_field_mukey_map.py
-      script_args: "--fields-path \"{yanroy_polygon_path}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-layer \"{ssurgo_layer}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{field_mukey_csv}\" --output-long-csv \"{field_mukey_long_csv}\" --summary-json \"{field_mukey_summary_json}\" --target-crs \"{target_crs}\" --verbose"
-      verbose: true
-    output_var: field_mukey
-  - name: "{sys.step.NN}_download_valu1_nccpi_by_mukey"
-    plugin: exec_script
-    args:
-      script: scripts/ssurgo/sda_download_valu1_by_mukey.py
-      script_args: "--field-mukey-long-csv \"{field_mukey_long_csv}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --valu1-columns \"{valu1_columns}\" --sda-endpoint \"{sda_endpoint}\" --table-name \"{sda_table_name}\" --chunk-size {sda_chunk_size} --sleep-seconds {sda_sleep_seconds} --output-valu1-csv \"{valu1_csv}\" --output-field-valu1-csv \"{field_valu1_csv}\" --summary-json \"{valu1_summary_json}\" --verbose"
-      verbose: true
-    output_var: valu1_download
+  - plugin: echo.py
