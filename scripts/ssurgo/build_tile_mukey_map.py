@@ -109,6 +109,78 @@ def _derive_tile(relative_path: str, tile_prefix_len: int) -> str:
     return token if TILE_RE.match(token) else ""
 
 
+def _list_layers(path: Path) -> list[str]:
+    names: list[str] = []
+    try:
+        import pyogrio  # type: ignore
+
+        raw = pyogrio.list_layers(path.as_posix())
+        for row in list(raw or []):
+            if isinstance(row, (list, tuple)) and row:
+                name = str(row[0] or "").strip()
+            else:
+                name = str(row or "").strip()
+            if name:
+                names.append(name)
+    except Exception:  # noqa: BLE001
+        try:
+            import fiona  # type: ignore
+
+            for name in list(fiona.listlayers(path.as_posix()) or []):
+                text = str(name or "").strip()
+                if text:
+                    names.append(text)
+        except Exception:  # noqa: BLE001
+            pass
+    # De-dup case-insensitively while preserving order.
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(name)
+    return out
+
+
+def _read_ssurgo_with_layer_fallback(gpd, *, path: Path, layer: str, bbox: tuple[float, float, float, float], verbose: bool):
+    available = _list_layers(path)
+    requested = str(layer or "").strip()
+    candidates: list[str] = []
+    for name in [requested, "MUPOLYGON", "mupolygon", "ssurgo_mapunit", "SSURGO_MAPUNIT"]:
+        if str(name or "").strip():
+            candidates.append(str(name).strip())
+    for name in available:
+        low = name.lower()
+        if "mupolygon" in low or "mapunit" in low:
+            candidates.append(name)
+    # De-dup case-insensitively while preserving order.
+    dedup: list[str] = []
+    seen: set[str] = set()
+    for name in candidates:
+        key = name.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        dedup.append(name)
+    errors: list[str] = []
+    for cand in dedup:
+        try:
+            _vlog(verbose, f"trying SSURGO layer={cand}")
+            df = gpd.read_file(path, layer=cand, bbox=bbox)
+            return df, cand, available
+        except Exception as exc:  # noqa: BLE001
+            if len(errors) < 8:
+                errors.append(f"{cand}: {exc}")
+    avail_preview = ", ".join(available[:30]) if available else "<unavailable>"
+    err_preview = "; ".join(errors) if errors else "no layer read attempts succeeded"
+    raise RuntimeError(
+        f"unable to read SSURGO polygon layer from {path.as_posix()}; "
+        f"requested={requested or '<none>'}; available={avail_preview}; errors={err_preview}"
+    )
+
+
 def build_tile_mukey_map(
     *,
     filtered_csv: str,
@@ -189,11 +261,21 @@ def build_tile_mukey_map(
     if not ssurgo_path_res.exists():
         raise FileNotFoundError(f"ssurgo path not found: {ssurgo_path_res.as_posix()}")
 
-    read_kwargs: dict[str, Any] = {"layer": str(ssurgo_layer or "").strip()}
     # Use global bbox from selected tile boxes to reduce SSURGO IO.
     tb = tuple(float(v) for v in tile_boxes.total_bounds.tolist())
-    read_kwargs["bbox"] = tb
-    ssurgo = gpd.read_file(ssurgo_path_res, **read_kwargs)
+    ssurgo, ssurgo_layer_used, available_layers = _read_ssurgo_with_layer_fallback(
+        gpd,
+        path=ssurgo_path_res,
+        layer=str(ssurgo_layer or "").strip(),
+        bbox=tb,
+        verbose=verbose,
+    )
+    if verbose:
+        _vlog(
+            verbose,
+            f"loaded SSURGO layer={ssurgo_layer_used} rows={len(ssurgo)} "
+            f"available_layer_count={len(available_layers)}",
+        )
     if ssurgo.empty:
         raise RuntimeError("no SSURGO rows loaded for selected tile bbox")
 
@@ -253,6 +335,7 @@ def build_tile_mukey_map(
             "tiles_csv": str(tiles_csv or ""),
             "ssurgo_path": ssurgo_path_res.as_posix(),
             "ssurgo_layer": str(ssurgo_layer or ""),
+            "ssurgo_layer_used": str(ssurgo_layer_used or ""),
             "mukey_field": str(mukey_field or ""),
             "states_csv": str(states_csv or ""),
             "state_field": str(state_field or ""),
