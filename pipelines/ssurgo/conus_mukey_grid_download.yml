@@ -7,7 +7,7 @@ vars:
   logdir: "{workdir}/logs"
   rawdir: "{env.basedir}/data/ssurgo/conus_mukey_grid/raw"
   extractdir: "{env.basedir}/data/ssurgo/conus_mukey_grid/extract"
-  archive_path: "{rawdir}/ssurgo_conus_mukey_grid.zip"
+  archive_path: "{rawdir}/ssurgo_conus_mukey_grid.7z"
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
