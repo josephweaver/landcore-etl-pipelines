@@ -8,6 +8,7 @@ vars:
   logdir: "{workdir}/logs"
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
   ssurgo_polygon_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mapunit.gpkg"
+  ssurgo_polygon_glob: "{env.basedir}/data/ssurgo/state/extract/**/*"
   ssurgo_layer: ""
   field_id_field: tile_field_id
   mukey_field: mukey
@@ -33,7 +34,7 @@ steps:
     plugin: exec_script
     args:
       script: scripts/ssurgo/build_field_mukey_map.py
-      script_args: "--fields-path \"{yanroy_polygon_path}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-layer \"{ssurgo_layer}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{field_mukey_csv}\" --output-long-csv \"{field_mukey_long_csv}\" --summary-json \"{field_mukey_summary_json}\" --target-crs \"{target_crs}\" --verbose"
+      script_args: "--fields-path \"{yanroy_polygon_path}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-glob \"{ssurgo_polygon_glob}\" --ssurgo-layer \"{ssurgo_layer}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{field_mukey_csv}\" --output-long-csv \"{field_mukey_long_csv}\" --summary-json \"{field_mukey_summary_json}\" --target-crs \"{target_crs}\" --verbose"
       verbose: true
     output_var: field_mukey
   - name: "{sys.step.NN}_download_valu1_nccpi_by_mukey"

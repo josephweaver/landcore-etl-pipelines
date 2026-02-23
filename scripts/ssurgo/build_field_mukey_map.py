@@ -127,6 +127,7 @@ def build_field_mukey_map(
     fields_path: str,
     fields_glob: str,
     ssurgo_path: str,
+    ssurgo_glob: str,
     ssurgo_layer: str,
     field_id_field: str,
     mukey_field: str,
@@ -138,21 +139,81 @@ def build_field_mukey_map(
 ) -> dict[str, Any]:
     try:
         import geopandas as gpd
+        import pandas as pd
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("build_field_mukey_map requires geopandas") from exc
+        raise RuntimeError("build_field_mukey_map requires geopandas and pandas") from exc
 
     fields, input_files = _load_fields(fields_path, fields_glob, field_id_field, verbose)
-    ssurgo_path_resolved = _resolve(ssurgo_path)
-    if ssurgo_layer.strip():
-        ssurgo = gpd.read_file(ssurgo_path_resolved, layer=ssurgo_layer.strip())
-    else:
-        ssurgo = gpd.read_file(ssurgo_path_resolved)
-    if ssurgo.empty:
-        raise RuntimeError(f"ssurgo input is empty: {ssurgo_path}")
+    ssurgo_files: list[Path] = []
+    ssurgo_path_resolved = _resolve(ssurgo_path) if str(ssurgo_path or "").strip() else None
+    if ssurgo_path_resolved is not None:
+        if ssurgo_path_resolved.exists():
+            ssurgo_files.append(ssurgo_path_resolved)
+        elif not str(ssurgo_glob or "").strip():
+            raise FileNotFoundError(f"ssurgo_path not found: {ssurgo_path_resolved}")
+        elif verbose:
+            print(f"[build_field_mukey_map][WARN] ssurgo_path not found, falling back to ssurgo_glob: {ssurgo_path_resolved}")
+
+    if str(ssurgo_glob or "").strip():
+        matches = sorted(glob.glob(str(ssurgo_glob), recursive=True))
+        if not matches:
+            matches = sorted(glob.glob(str((_resolve(".") / str(ssurgo_glob)).as_posix()), recursive=True))
+        for raw in matches:
+            p = Path(raw)
+            if not p.is_file():
+                continue
+            if p not in ssurgo_files:
+                ssurgo_files.append(p)
+    if not ssurgo_files:
+        raise FileNotFoundError("no SSURGO files found via ssurgo_path/ssurgo_glob")
+
+    # Try explicit layer first, then common gSSURGO polygon layer names.
+    layer_candidates = [str(ssurgo_layer or "").strip()] if str(ssurgo_layer or "").strip() else []
+    layer_candidates.extend(["MUPOLYGON", "mupolygon", "MapunitPoly", "mapunit", "ssurgo_mapunit"])
+    layer_candidates.append("")  # final fallback: default layer for file
+
+    ssurgo_frames: list[Any] = []
+    ssurgo_loaded_files: list[str] = []
+    for p in ssurgo_files:
+        loaded = False
+        last_err = ""
+        for layer_name in layer_candidates:
+            try:
+                if layer_name:
+                    cand = gpd.read_file(p, layer=layer_name)
+                else:
+                    cand = gpd.read_file(p)
+            except Exception as exc:  # noqa: BLE001
+                last_err = str(exc)
+                continue
+            if cand is None or cand.empty:
+                continue
+            if mukey_field not in cand.columns:
+                continue
+            if cand.crs is None:
+                continue
+            cand = cand[[mukey_field, "geometry"]].copy()
+            cand[mukey_field] = cand[mukey_field].map(_to_text)
+            cand = cand[cand.geometry.notna() & ~cand.geometry.is_empty].copy()
+            if cand.empty:
+                continue
+            ssurgo_frames.append(cand)
+            ssurgo_loaded_files.append(p.as_posix())
+            loaded = True
+            if verbose:
+                lname = layer_name or "<default>"
+                print(f"[build_field_mukey_map] loaded ssurgo file={p.as_posix()} layer={lname} rows={len(cand)}")
+            break
+        if not loaded and verbose:
+            print(f"[build_field_mukey_map][WARN] no usable mukey polygon layer in {p.as_posix()} err={last_err[:200]}")
+
+    if not ssurgo_frames:
+        raise RuntimeError("no usable SSURGO polygon layers loaded; check ssurgo_glob/ssurgo_layer and mukey_field")
+
+    ssurgo = gpd.GeoDataFrame(pd.concat(ssurgo_frames, ignore_index=True), geometry="geometry")
     if ssurgo.crs is None:
-        raise RuntimeError("ssurgo input missing CRS")
-    if mukey_field not in ssurgo.columns:
-        raise ValueError(f"mukey_field not found in ssurgo input: {mukey_field}")
+        # Use first frame CRS if concat lost metadata.
+        ssurgo = gpd.GeoDataFrame(ssurgo, geometry="geometry", crs=ssurgo_frames[0].crs)
 
     if target_crs.strip():
         fields = fields.to_crs(target_crs)
@@ -298,8 +359,10 @@ def build_field_mukey_map(
         "inputs": {
             "fields_path": str(fields_path or ""),
             "fields_glob": str(fields_glob or ""),
-            "ssurgo_path": ssurgo_path_resolved.as_posix(),
+            "ssurgo_path": ssurgo_path_resolved.as_posix() if ssurgo_path_resolved is not None else "",
+            "ssurgo_glob": str(ssurgo_glob or ""),
             "ssurgo_layer": str(ssurgo_layer or ""),
+            "ssurgo_loaded_files": ssurgo_loaded_files,
             "input_files": input_files,
         },
         "counts": {
@@ -335,6 +398,7 @@ def main() -> int:
     ap.add_argument("--fields-path", default="", help="Single field polygons vector path")
     ap.add_argument("--fields-glob", default="", help="Glob for batch field polygon vectors")
     ap.add_argument("--ssurgo-path", required=True, help="SSURGO polygon layer path with mukey column")
+    ap.add_argument("--ssurgo-glob", default="", help="Glob for SSURGO polygon files when ssurgo-path is missing or split by state")
     ap.add_argument("--ssurgo-layer", default="", help="Optional layer name when --ssurgo-path is a container (e.g. .gdb/.gpkg)")
     ap.add_argument("--field-id-field", default="tile_field_id")
     ap.add_argument("--mukey-field", default="mukey")
@@ -349,6 +413,7 @@ def main() -> int:
         fields_path=str(args.fields_path or ""),
         fields_glob=str(args.fields_glob or ""),
         ssurgo_path=str(args.ssurgo_path),
+        ssurgo_glob=str(args.ssurgo_glob or ""),
         ssurgo_layer=str(args.ssurgo_layer or ""),
         field_id_field=str(args.field_id_field),
         mukey_field=str(args.mukey_field),
