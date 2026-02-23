@@ -1,0 +1,36 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/yanroy/filtered_rasters.yml
+vars:
+  dataset_id: stage.ssurgo_mukey_by_tile_v1
+  name: ssurgo_yanroy_tile_mukey
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  filtered_csv: "{env.basedir}/data/yanroy/meta/filtered.csv"
+  relative_path_field: relative_path
+  minx_field: minx
+  miny_field: miny
+  maxx_field: maxx
+  maxy_field: maxy
+  tile_prefix_len: 6
+  tiles_csv: "{expr.join(project.tiles_of_interest)}"
+  ssurgo_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mupolygon_yanroy_tiles.gpkg"
+  ssurgo_layer: ssurgo_mapunit
+  mukey_field: mukey
+  states_csv: "{expr.join(project.states_of_interest)}"
+  state_field: areasymbol
+  outdir: "{workdir}/tile_mukey"
+  tile_mukey_csv: "{outdir}/tile_mukey.csv"
+  tile_counts_csv: "{outdir}/tile_mukey_counts.csv"
+  summary_json: "{outdir}/tile_mukey_summary.json"
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+steps:
+  - name: "{sys.step.NN}_build_tile_mukey_map"
+    plugin: exec_script
+    args:
+      script: scripts/ssurgo/build_tile_mukey_map.py
+      script_args: "--filtered-csv \"{filtered_csv}\" --relative-path-field \"{relative_path_field}\" --minx-field \"{minx_field}\" --miny-field \"{miny_field}\" --maxx-field \"{maxx_field}\" --maxy-field \"{maxy_field}\" --tile-prefix-len {tile_prefix_len} --tiles-csv \"{tiles_csv}\" --ssurgo-path \"{ssurgo_path}\" --ssurgo-layer \"{ssurgo_layer}\" --mukey-field \"{mukey_field}\" --states-csv \"{states_csv}\" --state-field \"{state_field}\" --output-tile-mukey-csv \"{tile_mukey_csv}\" --output-tile-counts-csv \"{tile_counts_csv}\" --summary-json \"{summary_json}\" --verbose"
+      verbose: true
+    output_var: tile_mukey
