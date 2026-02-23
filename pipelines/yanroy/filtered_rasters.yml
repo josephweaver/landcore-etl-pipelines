@@ -26,23 +26,6 @@ dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
 steps:
-  - name: "{sys.step.NN}_download_states_of_interest"
-    plugin: gdrive_download
-    args:
-      remote: "{gdrive_remote}"
-      src: "{gdrive_meta_src}"
-      glob: "{gdrive_meta_glob}"
-      out: "{metadir}"
-      recursive: false
-      no_clobber: true
-    output_var: staged_states_csv
-  - name: "{sys.step.NN}_states_csv_to_values"
-    plugin: exec_script
-    args:
-      script: scripts/yanroy/states_csv_to_values.py
-      script_args: "--csv \"{states_csv_path}\""
-      verbose: true
-    output_var: states_values
   - name: "{sys.step.NN}_filter_tiger_states"
     plugin: geo_vector_filter
     args:
@@ -50,7 +33,7 @@ steps:
       output_path: "{filtered_states_path}"
       key: STUSPS
       op: in
-      values: "{states_values.stdout}"
+      values: "{states_of_interest}"
       case_insensitive: true
     output_var: filtered_states
   - name: "{sys.step.NN}_reproject_filtered_states"
