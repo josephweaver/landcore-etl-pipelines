@@ -5,6 +5,7 @@ import argparse
 import csv
 import glob
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,59 @@ def _parse_states_csv(raw: str) -> list[str]:
         seen.add(state)
         out.append(state)
     return out
+
+
+def _parse_bbox_text(raw: str) -> tuple[float, float, float, float]:
+    text = str(raw or "").strip()
+    parts = [p.strip() for p in text.replace(";", ",").split(",") if p.strip()]
+    if len(parts) != 4:
+        raise ValueError("bbox must have 4 comma-separated values: minx,miny,maxx,maxy")
+    minx, miny, maxx, maxy = (float(parts[0]), float(parts[1]), float(parts[2]), float(parts[3]))
+    if not (math.isfinite(minx) and math.isfinite(miny) and math.isfinite(maxx) and math.isfinite(maxy)):
+        raise ValueError("bbox values must be finite numbers")
+    if maxx <= minx or maxy <= miny:
+        raise ValueError("bbox must satisfy maxx>minx and maxy>miny")
+    return (minx, miny, maxx, maxy)
+
+
+def _bbox_from_envi_hdr(path: Path) -> tuple[float, float, float, float]:
+    # Supports common ENVI-style keys used in many raster sidecar .hdr files:
+    # ncols, nrows, ulxmap, ulymap, xdim, ydim
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"HDR file not found: {path.as_posix()}")
+    values: dict[str, float] = {}
+    for raw in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        line = str(raw or "").strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        k = str(key or "").strip().lower()
+        v_text = str(val or "").strip()
+        try:
+            values[k] = float(v_text)
+        except Exception:
+            continue
+    required = ("ncols", "nrows", "ulxmap", "ulymap", "xdim", "ydim")
+    missing = [k for k in required if k not in values]
+    if missing:
+        raise ValueError(f"HDR missing required keys: {missing}")
+    ncols = int(values["ncols"])
+    nrows = int(values["nrows"])
+    ulx = float(values["ulxmap"])
+    uly = float(values["ulymap"])
+    xdim = float(values["xdim"])
+    ydim = float(values["ydim"])
+    maxx = ulx + (ncols * xdim)
+    miny = uly + (nrows * ydim)
+    minx = min(ulx, maxx)
+    maxx = max(ulx, maxx)
+    miny2 = min(uly, miny)
+    maxy2 = max(uly, miny)
+    if maxx <= minx or maxy2 <= miny2:
+        raise ValueError(f"invalid HDR-derived bbox from {path.as_posix()}")
+    return (minx, miny2, maxx, maxy2)
 
 
 _TILE_ID_RE = re.compile(r"(h\d{2}v\d{2})", re.IGNORECASE)
@@ -281,6 +335,9 @@ def build_field_mukey_map(
     states_csv: str,
     state_field: str,
     ssurgo_bbox_filter: bool,
+    extent_bbox: str,
+    extent_crs: str,
+    extent_hdr: str,
     field_id_field: str,
     mukey_field: str,
     output_csv: str,
@@ -297,7 +354,22 @@ def build_field_mukey_map(
 
     fields, input_files = _load_fields(fields_path, fields_glob, field_id_field, verbose)
     fields_bbox = tuple(float(v) for v in fields.total_bounds.tolist())
+    bbox_source = "fields"
+    query_bbox = fields_bbox
+    query_bbox_crs: Any = fields.crs
+    if str(extent_hdr or "").strip():
+        hdr_path = _resolve(extent_hdr)
+        query_bbox = _bbox_from_envi_hdr(hdr_path)
+        bbox_source = f"hdr:{hdr_path.as_posix()}"
+        if str(extent_crs or "").strip():
+            query_bbox_crs = str(extent_crs).strip()
+    if str(extent_bbox or "").strip():
+        query_bbox = _parse_bbox_text(extent_bbox)
+        bbox_source = "arg:extent_bbox"
+        if str(extent_crs or "").strip():
+            query_bbox_crs = str(extent_crs).strip()
     _vlog(verbose, f"field extent bbox={fields_bbox}")
+    _vlog(verbose, f"SSURGO query bbox={query_bbox} source={bbox_source} crs={query_bbox_crs}")
     _vlog(verbose, "resolving SSURGO inputs")
     ssurgo_files: list[Path] = []
     ssurgo_path_resolved = _resolve(ssurgo_path) if str(ssurgo_path or "").strip() else None
@@ -376,7 +448,7 @@ def build_field_mukey_map(
                     read_kwargs["where"] = str(ssurgo_where).strip()
                 if ssurgo_bbox_filter:
                     layer_crs = _resolve_layer_crs(p, str(layer_name or ""))
-                    bbox = _transform_bbox(fields_bbox, fields.crs, layer_crs)
+                    bbox = _transform_bbox(query_bbox, query_bbox_crs, layer_crs)
                     read_kwargs["bbox"] = bbox
                 cand = gpd.read_file(p, **read_kwargs)
             except Exception as exc:  # noqa: BLE001
@@ -641,6 +713,9 @@ def main() -> int:
     ap.add_argument("--ssurgo-where", default="", help="Optional OGR SQL where-clause filter for SSURGO layer reads")
     ap.add_argument("--states-csv", default="", help="Optional state filter list (for example: IL,MN,WI)")
     ap.add_argument("--state-field", default="areasymbol", help="Optional SSURGO state-like field (for example AREASYMBOL)")
+    ap.add_argument("--extent-bbox", default="", help="Optional bbox override for SSURGO reads: minx,miny,maxx,maxy")
+    ap.add_argument("--extent-crs", default="", help="CRS for --extent-bbox or --extent-hdr (for example EPSG:5070)")
+    ap.add_argument("--extent-hdr", default="", help="Optional ENVI-style .hdr file to derive extent bbox for SSURGO reads")
     ap.add_argument(
         "--no-ssurgo-bbox-filter",
         action="store_false",
@@ -667,6 +742,9 @@ def main() -> int:
         states_csv=str(args.states_csv or ""),
         state_field=str(args.state_field or ""),
         ssurgo_bbox_filter=bool(args.ssurgo_bbox_filter),
+        extent_bbox=str(args.extent_bbox or ""),
+        extent_crs=str(args.extent_crs or ""),
+        extent_hdr=str(args.extent_hdr or ""),
         field_id_field=str(args.field_id_field),
         mukey_field=str(args.mukey_field),
         output_csv=str(args.output_csv),
