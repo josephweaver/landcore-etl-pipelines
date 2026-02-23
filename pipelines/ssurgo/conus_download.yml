@@ -15,6 +15,7 @@ steps:
     plugin: web_download_list
     args:
       out: "{rawdir}"
+      out_file: "{rawdir}/ssurgo_conus.zip"
       overwrite: false
       timeout_seconds: 900
       urls: "{ssurgo_conus_url}"
@@ -22,7 +23,7 @@ steps:
   - name: "{sys.step.NN}_extract_conus_archive"
     plugin: archive_extract
     args:
-      archive_glob: "{rawdir}/*"
+      archive_glob: "{rawdir}/ssurgo_conus.zip"
       out: "{extractdir}"
       overwrite: true
     output_var: extracted_raw
