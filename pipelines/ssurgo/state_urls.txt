@@ -1,0 +1,10 @@
+# SSURGO gSSURGO state archive URLs (one URL per line).
+# The select_state_urls preflight step will keep URLs that match requested states
+# by two-letter code (e.g., _IL, _MN, _WI).
+#
+# Example (replace with real URLs):
+# https://example.host/path/gSSURGO_IL.gdb.zip
+# https://example.host/path/gSSURGO_MN.gdb.zip
+#
+# You can also leave this file empty and set pipeline var:
+#   ssurgo_url_template: "https://host/path/gSSURGO_{state}.gdb.zip"

@@ -1,108 +1,42 @@
 project_id: land_core
-requires_pipelines:
-  - pipelines/yanroy/download.yml
-  - pipelines/tiger/state.yml
 vars:
-  dataset_id: stage.yanroy_filtered_v1
-  name: yanroy_build
-  target_crs: EPSG:5070
-  gdrive_remote: gdrive
-  gdrive_meta_src: Data/ETL/Meta
-  gdrive_meta_glob: states.of.interest.csv
-  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
-  logdir: "{workdir}/logs"
-  yanroy_dir: "{env.basedir}/data/yanroy"
-  rawdir: "{yanroy_dir}/raw"
-  metadir: "{yanroy_dir}/meta"
-  filtereddir: "{yanroy_dir}/filtered"
-  polygon_dir: "{yanroy_dir}/polygons"
-  polygon_glob: "{polygon_dir}/WELD_*_2010_field_segments.gpkg"
-  polygon_combined_path: "{polygon_dir}/field_polygons.gpkg"
-  tiger_state_path: "{env.basedir}/data/tiger/state/extract/tl_2025_us_state.shp"
-  states_csv_path: "{metadir}/states.of.interest.csv"
-  filtered_states_path: "{workdir}/states/states.of.interest.gpkg"
-  filtered_states_5070_path: "{workdir}/states/states.of.interest.5070.gpkg"
-  raster_filter_outdir: "{workdir}/raster_filter"
+  basedir: "{env.basedir}/land_core"
+  owner: land-core
+  pipeline_assets_repo_url: https://github.com/josephweaver/landcore-etl-pipelines.git
+  pipeline_assets_local_repo_path: ../landcore-etl-pipelines
+  pipeline_assets_project_key: land_core
+  pipeline_assets_pipelines_dir: pipelines
+  pipeline_assets_scripts_dir: scripts
+  data_dictionary_repo_url: https://github.com/land-core/landcore-data-catalog.git
+  states_of_interest:
+    - IL
+    - MN
+    - WI
+    - OH
+    - SD
+    - IA
+    - IN
+    - MI
+    - MO
+  pipeline_asset_sources:
+    -
+      project_key: land_core
+      repo_url: https://github.com/josephweaver/landcore-etl-pipelines.git
+      local_repo_path: ../landcore-etl-pipelines
+      pipelines_dir: pipelines
+      scripts_dir: scripts
+      ref: main
+      priority: 100
+    -
+      project_key: shared
+      repo_url: https://github.com/josephweaver/shared-etl-pipelines.git
+      local_repo_path: ../shared-etl-pipelines
+      pipelines_dir: pipelines
+      scripts_dir: scripts
+      ref: main
+      priority: 200
 dirs:
-  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  workdir: "{env.workdir}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
 steps:
-  - name: "{sys.step.NN}_download_states_of_interest"
-    plugin: gdrive_download
-    args:
-      remote: "{gdrive_remote}"
-      src: "{gdrive_meta_src}"
-      glob: "{gdrive_meta_glob}"
-      out: "{metadir}"
-      recursive: false
-      no_clobber: true
-    output_var: staged_states_csv
-  - name: "{sys.step.NN}_states_csv_to_values"
-    plugin: exec_script
-    args:
-      script: scripts/yanroy/states_csv_to_values.py
-      script_args: "--csv \"{states_csv_path}\""
-      verbose: true
-    output_var: states_values
-  - name: "{sys.step.NN}_filter_tiger_states"
-    plugin: geo_vector_filter
-    args:
-      input_path: "{tiger_state_path}"
-      output_path: "{filtered_states_path}"
-      key: STUSPS
-      op: in
-      values: "{states_values.stdout}"
-      case_insensitive: true
-    output_var: filtered_states
-  - name: "{sys.step.NN}_reproject_filtered_states"
-    plugin: geo/geo_vector_reproject
-    args:
-      input_path: "{filtered_states_path}"
-      output_path: "{filtered_states_5070_path}"
-      target_crs: "{target_crs}"
-      overwrite: true
-    output_var: filtered_states_5070
-  - name: "{sys.step.NN}_select_yanroy_rasters"
-    plugin: geo_filter_rasters_by_polygon
-    args:
-      raster_dir: "{rawdir}"
-      selector_path: "{filtered_states_5070_path}"
-      output_dir: "{raster_filter_outdir}"
-      raster_extensions: .hdr
-      fail_on_missing_crs: false
-      verbose: true
-    output_var: selected_rasters
-  - name: "{sys.step.NN}_materialize_filtered_rasters"
-    plugin: exec_script
-    args:
-      script: scripts/yanroy/copy_selected_rasters.py
-      script_args: "--selected-csv \"{selected_rasters.selected_rasters_csv}\" --src-root \"{rawdir}\" --dst-root \"{filtereddir}\""
-      verbose: true
-    output_var: copied_rasters
-  - name: "{sys.step.NN}_polygonize_field_id_rasters"
-    plugin: geo/geo_raster_polygonize
-    args:
-      input_raster: "{item}"
-      output_path: "{polygon_dir}/{item_stem}.gpkg"
-      value_field: field_id
-      exclude_values: 0
-      selector_path: "{filtered_states_5070_path}"
-      filter_predicate: intersects
-      target_crs: "{target_crs}"
-      dissolve_by_value: true
-      overwrite: true
-    foreach_glob: "{filtereddir}/**/WELD_*_2010_field_segments"
-    foreach_kind: files
-    output_var: field_polygons
-  - name: "{sys.step.NN}_combine_field_polygons"
-    plugin: geo/geo_vector_combine
-    args:
-      input_glob: "{polygon_glob}"
-      output_path: "{polygon_combined_path}"
-      target_crs: "{target_crs}"
-      include_source_name: true
-      source_name_field: source_name
-      overwrite: true
-      allow_empty: false
-      verbose: true
-    output_var: field_polygons_combined
+  - plugin: echo.py
