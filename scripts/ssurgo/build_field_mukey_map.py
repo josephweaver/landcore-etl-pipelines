@@ -44,6 +44,20 @@ def _parse_glob_patterns(raw: str) -> list[str]:
     return out
 
 
+def _parse_states_csv(raw: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for token in str(raw or "").replace(";", ",").split(","):
+        state = str(token or "").strip().upper()
+        if not state:
+            continue
+        if state in seen:
+            continue
+        seen.add(state)
+        out.append(state)
+    return out
+
+
 _TILE_ID_RE = re.compile(r"(h\d{2}v\d{2})", re.IGNORECASE)
 
 
@@ -171,6 +185,91 @@ def _list_vector_layers(path: Path) -> list[str]:
         return []
 
 
+def _lookup_col_case_insensitive(cols: list[Any], target: str) -> str:
+    by_lower = {str(c).lower(): str(c) for c in cols}
+    return str(by_lower.get(str(target or "").strip().lower()) or "")
+
+
+def _resolve_layer_crs(path: Path, layer_name: str):
+    try:
+        import fiona
+
+        if layer_name:
+            with fiona.open(path.as_posix(), layer=layer_name) as src:
+                return src.crs_wkt or src.crs
+        with fiona.open(path.as_posix()) as src:
+            return src.crs_wkt or src.crs
+    except Exception:
+        return None
+
+
+def _transform_bbox(bounds: tuple[float, float, float, float], src_crs: Any, dst_crs: Any):
+    if src_crs is None or dst_crs is None:
+        return bounds
+    try:
+        from pyproj import CRS, Transformer
+
+        src = CRS.from_user_input(src_crs)
+        dst = CRS.from_user_input(dst_crs)
+        if src == dst:
+            return bounds
+        minx, miny, maxx, maxy = bounds
+        xs = [minx, minx, maxx, maxx]
+        ys = [miny, maxy, miny, maxy]
+        transformer = Transformer.from_crs(src, dst, always_xy=True)
+        tx, ty = transformer.transform(xs, ys)
+        return (float(min(tx)), float(min(ty)), float(max(tx)), float(max(ty)))
+    except Exception:
+        return bounds
+
+
+def _normalize_state_value(value: Any, state_col_name: str) -> str:
+    text = re.sub(r"[^A-Za-z0-9]", "", _to_text(value).upper())
+    if not text:
+        return ""
+    col_lower = str(state_col_name or "").strip().lower()
+    if col_lower in {"areasymbol", "areasym", "area_symbol"}:
+        return text[:2] if len(text) >= 2 else text
+    if len(text) == 2:
+        return text
+    if len(text) >= 2 and text[:2].isalpha():
+        return text[:2]
+    return text
+
+
+def _apply_state_filter(cand, *, states: list[str], state_field: str, verbose: bool):
+    if not states:
+        return cand, "", 0
+    selected_col = ""
+    if str(state_field or "").strip():
+        selected_col = _lookup_col_case_insensitive(list(cand.columns), str(state_field))
+    if not selected_col:
+        for name in (
+            "stusps",
+            "state",
+            "state_abbr",
+            "state_name",
+            "statefp",
+            "areasymbol",
+            "areasym",
+            "area_symbol",
+        ):
+            selected_col = _lookup_col_case_insensitive(list(cand.columns), name)
+            if selected_col:
+                break
+    if not selected_col:
+        _vlog(verbose, f"state filter requested but no matching state column found; available={list(cand.columns)}")
+        return cand, "", 0
+
+    wanted = {str(s).upper() for s in states}
+    before = int(len(cand))
+    state_codes = cand[selected_col].map(lambda v: _normalize_state_value(v, selected_col))
+    cand = cand[state_codes.isin(wanted)].copy()
+    after = int(len(cand))
+    _vlog(verbose, f"applied state filter column={selected_col} states={sorted(wanted)} rows_before={before} rows_after={after}")
+    return cand, selected_col, max(0, before - after)
+
+
 def build_field_mukey_map(
     *,
     fields_path: str,
@@ -178,6 +277,10 @@ def build_field_mukey_map(
     ssurgo_path: str,
     ssurgo_glob: str,
     ssurgo_layer: str,
+    ssurgo_where: str,
+    states_csv: str,
+    state_field: str,
+    ssurgo_bbox_filter: bool,
     field_id_field: str,
     mukey_field: str,
     output_csv: str,
@@ -193,6 +296,8 @@ def build_field_mukey_map(
         raise RuntimeError("build_field_mukey_map requires geopandas and pandas") from exc
 
     fields, input_files = _load_fields(fields_path, fields_glob, field_id_field, verbose)
+    fields_bbox = tuple(float(v) for v in fields.total_bounds.tolist())
+    _vlog(verbose, f"field extent bbox={fields_bbox}")
     _vlog(verbose, "resolving SSURGO inputs")
     ssurgo_files: list[Path] = []
     ssurgo_path_resolved = _resolve(ssurgo_path) if str(ssurgo_path or "").strip() else None
@@ -228,6 +333,10 @@ def build_field_mukey_map(
 
     ssurgo_frames: list[Any] = []
     ssurgo_loaded_files: list[str] = []
+    states = _parse_states_csv(states_csv)
+    total_bbox_filtered_rows = 0
+    total_state_filtered_rows = 0
+    state_filter_column_used = ""
     for p in ssurgo_files:
         # Per-file layer candidates:
         # 1) explicit user-provided layer
@@ -260,15 +369,22 @@ def build_field_mukey_map(
         for layer_name in deduped_candidates:
             _vlog(verbose, f"trying SSURGO file={p.as_posix()} layer={layer_name or '<default>'}")
             try:
+                read_kwargs: dict[str, Any] = {}
                 if layer_name:
-                    cand = gpd.read_file(p, layer=layer_name)
-                else:
-                    cand = gpd.read_file(p)
+                    read_kwargs["layer"] = layer_name
+                if str(ssurgo_where or "").strip():
+                    read_kwargs["where"] = str(ssurgo_where).strip()
+                if ssurgo_bbox_filter:
+                    layer_crs = _resolve_layer_crs(p, str(layer_name or ""))
+                    bbox = _transform_bbox(fields_bbox, fields.crs, layer_crs)
+                    read_kwargs["bbox"] = bbox
+                cand = gpd.read_file(p, **read_kwargs)
             except Exception as exc:  # noqa: BLE001
                 last_err = str(exc)
                 continue
             if cand is None or cand.empty:
                 continue
+            raw_rows = int(len(cand))
             actual_mukey_col = None
             by_lower = {str(c).lower(): c for c in cand.columns}
             if mukey_field in cand.columns:
@@ -279,11 +395,26 @@ def build_field_mukey_map(
                 continue
             if cand.crs is None:
                 continue
+            if states:
+                cand, state_col_used, state_dropped = _apply_state_filter(
+                    cand,
+                    states=states,
+                    state_field=state_field,
+                    verbose=verbose,
+                )
+                if state_col_used:
+                    state_filter_column_used = state_col_used
+                total_state_filtered_rows += int(state_dropped)
+                if cand.empty:
+                    continue
+            after_state_rows = int(len(cand))
             cand = cand[[actual_mukey_col, "geometry"]].copy()
             if actual_mukey_col != mukey_field:
                 cand = cand.rename(columns={actual_mukey_col: mukey_field})
             cand[mukey_field] = cand[mukey_field].map(_to_text)
             cand = cand[cand.geometry.notna() & ~cand.geometry.is_empty].copy()
+            dropped_geom = max(0, after_state_rows - int(len(cand)))
+            total_bbox_filtered_rows += dropped_geom
             if cand.empty:
                 continue
             ssurgo_frames.append(cand)
@@ -462,6 +593,11 @@ def build_field_mukey_map(
             "ssurgo_path": ssurgo_path_resolved.as_posix() if ssurgo_path_resolved is not None else "",
             "ssurgo_glob": str(ssurgo_glob or ""),
             "ssurgo_layer": str(ssurgo_layer or ""),
+            "ssurgo_where": str(ssurgo_where or ""),
+            "states_csv": str(states_csv or ""),
+            "state_field": str(state_field or ""),
+            "ssurgo_bbox_filter": bool(ssurgo_bbox_filter),
+            "state_filter_column_used": state_filter_column_used,
             "ssurgo_loaded_files": ssurgo_loaded_files,
             "input_files": input_files,
         },
@@ -472,6 +608,8 @@ def build_field_mukey_map(
             "intersection_rows": int(len(intersections)),
             "unique_field_mukey_pairs": int(len(pair_rows)),
             "unique_fields": int(len(grouped)),
+            "bbox_or_geom_filtered_rows": int(total_bbox_filtered_rows),
+            "state_filtered_rows": int(total_state_filtered_rows),
         },
         "outputs": {
             "output_csv": output_csv_path.as_posix(),
@@ -500,6 +638,15 @@ def main() -> int:
     ap.add_argument("--ssurgo-path", required=True, help="SSURGO polygon layer path with mukey column")
     ap.add_argument("--ssurgo-glob", default="", help="Glob for SSURGO polygon files when ssurgo-path is missing or split by state")
     ap.add_argument("--ssurgo-layer", default="", help="Optional layer name when --ssurgo-path is a container (e.g. .gdb/.gpkg)")
+    ap.add_argument("--ssurgo-where", default="", help="Optional OGR SQL where-clause filter for SSURGO layer reads")
+    ap.add_argument("--states-csv", default="", help="Optional state filter list (for example: IL,MN,WI)")
+    ap.add_argument("--state-field", default="areasymbol", help="Optional SSURGO state-like field (for example AREASYMBOL)")
+    ap.add_argument(
+        "--no-ssurgo-bbox-filter",
+        action="store_false",
+        dest="ssurgo_bbox_filter",
+        help="Disable bbox filtering of SSURGO reads against field extent.",
+    )
     ap.add_argument("--field-id-field", default="tile_field_id")
     ap.add_argument("--mukey-field", default="mukey")
     ap.add_argument("--output-csv", required=True, help="Field-level mapping CSV with mukeys_json")
@@ -507,6 +654,7 @@ def main() -> int:
     ap.add_argument("--summary-json", required=True)
     ap.add_argument("--target-crs", default="EPSG:5070")
     ap.add_argument("--verbose", action="store_true")
+    ap.set_defaults(ssurgo_bbox_filter=True)
     args = ap.parse_args()
 
     build_field_mukey_map(
@@ -515,6 +663,10 @@ def main() -> int:
         ssurgo_path=str(args.ssurgo_path),
         ssurgo_glob=str(args.ssurgo_glob or ""),
         ssurgo_layer=str(args.ssurgo_layer or ""),
+        ssurgo_where=str(args.ssurgo_where or ""),
+        states_csv=str(args.states_csv or ""),
+        state_field=str(args.state_field or ""),
+        ssurgo_bbox_filter=bool(args.ssurgo_bbox_filter),
         field_id_field=str(args.field_id_field),
         mukey_field=str(args.mukey_field),
         output_csv=str(args.output_csv),
