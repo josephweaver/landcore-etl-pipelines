@@ -1,15 +1,9 @@
 project_id: land_core
-shared_with_projects:
-  - gee_lee
-
 vars:
   dataset_id: raw.ssurgo_state_download_v1
   name: ssurgo_state_download
-  # States come from project vars in config/projects.yml.
   states_csv: "{expr.join(states_of_interest, ',')}"
-  # Option A (recommended): supply concrete URLs in this file.
-  ssurgo_urls_file: "pipelines/ssurgo/state_urls.txt"
-  # Option B: set a template and include {state}, e.g. https://host/path/gSSURGO_{state}.zip
+  ssurgo_urls_file: pipelines/ssurgo/state_urls.txt
   ssurgo_url_template: ""
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
@@ -17,16 +11,17 @@ vars:
   archivedir: "{ssurgo_dir}/archive"
   extractdir: "{ssurgo_dir}/extract"
   selected_urls_file: "{workdir}/ssurgo_state_urls.selected.txt"
-
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
 steps:
   - name: "{sys.step.NN}_select_state_urls"
     plugin: exec_script
     args:
-      script: "scripts/ssurgo/select_state_urls.py"
+      script: scripts/ssurgo/select_state_urls.py
       script_args: "--states \"{states_csv}\" --urls-file \"{ssurgo_urls_file}\" --url-template \"{ssurgo_url_template}\" --output-file \"{selected_urls_file}\" --strict --verbose"
       verbose: true
     output_var: selected_urls
-
   - name: "{sys.step.NN}_download_state_archives"
     plugin: web_download_list
     args:
@@ -37,7 +32,6 @@ steps:
       fail_on_error: true
       verbose: true
     output_var: staged_archives
-
   - name: "{sys.step.NN}_extract_state_archives"
     plugin: archive_extract
     args:
