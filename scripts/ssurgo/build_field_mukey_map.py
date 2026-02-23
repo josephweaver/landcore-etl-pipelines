@@ -136,6 +136,35 @@ def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbos
     return fields, input_files
 
 
+def _list_vector_layers(path: Path) -> list[str]:
+    # Best-effort layer discovery for container datasets (for example .gdb, .gpkg).
+    try:
+        import fiona
+
+        layers = fiona.listlayers(path.as_posix())
+        if layers:
+            return [str(x) for x in layers if str(x).strip()]
+    except Exception:
+        pass
+
+    try:
+        import pyogrio
+
+        layers_info = pyogrio.list_layers(path.as_posix())
+        out: list[str] = []
+        # pyogrio may return a 2D ndarray/list where row[0] is layer name.
+        for row in layers_info:  # type: ignore[assignment]
+            try:
+                name = str(row[0]).strip()
+            except Exception:
+                name = str(row).strip()
+            if name:
+                out.append(name)
+        return out
+    except Exception:
+        return []
+
+
 def build_field_mukey_map(
     *,
     fields_path: str,
@@ -189,17 +218,33 @@ def build_field_mukey_map(
     if not ssurgo_files:
         raise FileNotFoundError("no SSURGO files found via ssurgo_path/ssurgo_glob")
 
-    # Try explicit layer first, then common gSSURGO polygon layer names.
-    layer_candidates = [str(ssurgo_layer or "").strip()] if str(ssurgo_layer or "").strip() else []
-    layer_candidates.extend(["MUPOLYGON", "mupolygon", "MapunitPoly", "mapunit", "ssurgo_mapunit"])
-    layer_candidates.append("")  # final fallback: default layer for file
-
     ssurgo_frames: list[Any] = []
     ssurgo_loaded_files: list[str] = []
     for p in ssurgo_files:
+        # Per-file layer candidates:
+        # 1) explicit user-provided layer
+        # 2) common gSSURGO polygon names
+        # 3) discovered layers from the container
+        # 4) default layer fallback
+        layer_candidates: list[str] = []
+        if str(ssurgo_layer or "").strip():
+            layer_candidates.append(str(ssurgo_layer or "").strip())
+        layer_candidates.extend(["MUPOLYGON", "mupolygon", "MapunitPoly", "mapunit", "ssurgo_mapunit"])
+        if p.suffix.lower() in {".gdb", ".gpkg"}:
+            layer_candidates.extend(_list_vector_layers(p))
+        layer_candidates.append("")  # final fallback: default layer for file
+        deduped_candidates: list[str] = []
+        seen_layer_keys: set[str] = set()
+        for item in layer_candidates:
+            key = str(item).strip().lower()
+            if key in seen_layer_keys:
+                continue
+            seen_layer_keys.add(key)
+            deduped_candidates.append(str(item))
+
         loaded = False
         last_err = ""
-        for layer_name in layer_candidates:
+        for layer_name in deduped_candidates:
             try:
                 if layer_name:
                     cand = gpd.read_file(p, layer=layer_name)
