@@ -1,0 +1,28 @@
+project_id: land_core
+vars:
+  dataset_id: raw.ssurgo_conus_download_v1
+  name: ssurgo_conus_download
+  ssurgo_conus_url: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2063090987270"
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  rawdir: "{env.basedir}/data/ssurgo/state/raw"
+  extractdir: "{env.basedir}/data/ssurgo/state/extract"
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+steps:
+  - name: "{sys.step.NN}_download_conus_archive"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "{ssurgo_conus_url}"
+    output_var: staged_raw
+  - name: "{sys.step.NN}_extract_conus_archive"
+    plugin: archive_extract
+    args:
+      archive_glob: "{rawdir}/*"
+      out: "{extractdir}"
+      overwrite: true
+    output_var: extracted_raw
