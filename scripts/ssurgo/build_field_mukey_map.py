@@ -5,6 +5,7 @@ import argparse
 import csv
 import glob
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,52 @@ def _to_text(value: Any) -> str:
         except Exception:  # noqa: BLE001
             pass
     return str(value)
+
+
+_TILE_ID_RE = re.compile(r"(h\d{2}v\d{2})", re.IGNORECASE)
+
+
+def _derive_field_id_column(fields, field_id_field: str, verbose: bool):
+    # Fast-path: requested field id field already exists.
+    if field_id_field in fields.columns:
+        return fields
+
+    # Common requested key: tile_field_id.
+    if str(field_id_field).strip().lower() == "tile_field_id":
+        has_field_id = "field_id" in fields.columns
+        has_tile_id = "tile_id" in fields.columns
+        has_source = "source_name" in fields.columns
+        if has_field_id and has_tile_id:
+            fields = fields.copy()
+            fields[field_id_field] = (
+                fields["tile_id"].map(_to_text).str.lower().str.strip()
+                + "_"
+                + fields["field_id"].map(_to_text).str.strip()
+            )
+            if verbose:
+                print("[build_field_mukey_map] derived tile_field_id from tile_id + field_id")
+            return fields
+
+        if has_field_id and has_source:
+            fields = fields.copy()
+
+            def _tile_from_source(v: Any) -> str:
+                text = _to_text(v).lower()
+                m = _TILE_ID_RE.search(text)
+                return m.group(1).lower() if m else ""
+
+            fields["tile_id"] = fields["source_name"].map(_tile_from_source)
+            fields[field_id_field] = (
+                fields["tile_id"].map(_to_text).str.lower().str.strip()
+                + "_"
+                + fields["field_id"].map(_to_text).str.strip()
+            )
+            if verbose:
+                print("[build_field_mukey_map] derived tile_field_id from source_name + field_id")
+            return fields
+
+    cols = ", ".join(str(c) for c in fields.columns)
+    raise ValueError(f"field_id_field not found/derivable: {field_id_field}; available columns: {cols}")
 
 
 def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbose: bool):
@@ -67,8 +114,7 @@ def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbos
         raise RuntimeError("field polygons input is empty")
     if fields.crs is None:
         raise RuntimeError("field polygons missing CRS")
-    if field_id_field not in fields.columns:
-        raise ValueError(f"field_id_field not found: {field_id_field}")
+    fields = _derive_field_id_column(fields, field_id_field, verbose)
 
     fields = fields[fields.geometry.notna() & ~fields.geometry.is_empty].copy()
     if verbose:
