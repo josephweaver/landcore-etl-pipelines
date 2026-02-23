@@ -14,8 +14,8 @@ vars:
   maxy_field: maxy
   tile_prefix_len: 6
   tiles_csv: "{expr.join(project.tiles_of_interest)}"
-  ssurgo_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mupolygon_yanroy_tiles.gpkg"
-  ssurgo_layer: ssurgo_mapunit
+  ssurgo_path: "{env.basedir}/data/ssurgo/state/extract/gSSURGO_CONUS.gdb"
+  ssurgo_layer: MUPOLYGON
   mukey_field: mukey
   states_csv: "{expr.join(project.states_of_interest)}"
   state_field: areasymbol
