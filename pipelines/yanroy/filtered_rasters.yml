@@ -33,8 +33,9 @@ steps:
       output_path: "{filtered_states_path}"
       key: STUSPS
       op: in
-      values: "{project.states_of_interest}"
+      values: "{expr.join(project.states_of_interest)}"
       case_insensitive: true
+      fail_on_empty: true
     output_var: filtered_states
   - name: "{sys.step.NN}_reproject_filtered_states"
     plugin: geo/geo_vector_reproject
