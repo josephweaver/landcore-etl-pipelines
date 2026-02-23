@@ -5,6 +5,7 @@ import argparse
 import csv
 import glob
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,66 @@ def _to_text(value: Any) -> str:
     return str(value)
 
 
+def _parse_glob_patterns(raw: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for token in str(raw or "").replace(";", ",").split(","):
+        pat = str(token or "").strip()
+        if not pat:
+            continue
+        if pat in seen:
+            continue
+        seen.add(pat)
+        out.append(pat)
+    return out
+
+
+_TILE_ID_RE = re.compile(r"(h\d{2}v\d{2})", re.IGNORECASE)
+
+
+def _derive_field_id_column(fields, field_id_field: str, verbose: bool):
+    # Fast-path: requested field id field already exists.
+    if field_id_field in fields.columns:
+        return fields
+
+    # Common requested key: tile_field_id.
+    if str(field_id_field).strip().lower() == "tile_field_id":
+        has_field_id = "field_id" in fields.columns
+        has_tile_id = "tile_id" in fields.columns
+        has_source = "source_name" in fields.columns
+        if has_field_id and has_tile_id:
+            fields = fields.copy()
+            fields[field_id_field] = (
+                fields["tile_id"].map(_to_text).str.lower().str.strip()
+                + "_"
+                + fields["field_id"].map(_to_text).str.strip()
+            )
+            if verbose:
+                print("[build_field_mukey_map] derived tile_field_id from tile_id + field_id")
+            return fields
+
+        if has_field_id and has_source:
+            fields = fields.copy()
+
+            def _tile_from_source(v: Any) -> str:
+                text = _to_text(v).lower()
+                m = _TILE_ID_RE.search(text)
+                return m.group(1).lower() if m else ""
+
+            fields["tile_id"] = fields["source_name"].map(_tile_from_source)
+            fields[field_id_field] = (
+                fields["tile_id"].map(_to_text).str.lower().str.strip()
+                + "_"
+                + fields["field_id"].map(_to_text).str.strip()
+            )
+            if verbose:
+                print("[build_field_mukey_map] derived tile_field_id from source_name + field_id")
+            return fields
+
+    cols = ", ".join(str(c) for c in fields.columns)
+    raise ValueError(f"field_id_field not found/derivable: {field_id_field}; available columns: {cols}")
+
+
 def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbose: bool):
     try:
         import geopandas as gpd
@@ -36,12 +97,15 @@ def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbos
 
     if str(fields_path or "").strip():
         p = _resolve(fields_path)
-        if not p.exists():
+        if p.exists():
+            gdf = gpd.read_file(p)
+            gdf["source_name"] = p.name
+            frames.append(gdf)
+            input_files.append(p.as_posix())
+        elif not str(fields_glob or "").strip():
             raise FileNotFoundError(f"fields_path not found: {p}")
-        gdf = gpd.read_file(p)
-        gdf["source_name"] = p.name
-        frames.append(gdf)
-        input_files.append(p.as_posix())
+        elif verbose:
+            print(f"[build_field_mukey_map][WARN] fields_path not found, falling back to fields_glob: {p}")
 
     if str(fields_glob or "").strip():
         matches = sorted(glob.glob(str(fields_glob), recursive=True))
@@ -64,8 +128,7 @@ def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbos
         raise RuntimeError("field polygons input is empty")
     if fields.crs is None:
         raise RuntimeError("field polygons missing CRS")
-    if field_id_field not in fields.columns:
-        raise ValueError(f"field_id_field not found: {field_id_field}")
+    fields = _derive_field_id_column(fields, field_id_field, verbose)
 
     fields = fields[fields.geometry.notna() & ~fields.geometry.is_empty].copy()
     if verbose:
@@ -78,6 +141,7 @@ def build_field_mukey_map(
     fields_path: str,
     fields_glob: str,
     ssurgo_path: str,
+    ssurgo_glob: str,
     ssurgo_layer: str,
     field_id_field: str,
     mukey_field: str,
@@ -89,21 +153,100 @@ def build_field_mukey_map(
 ) -> dict[str, Any]:
     try:
         import geopandas as gpd
+        import pandas as pd
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("build_field_mukey_map requires geopandas") from exc
+        raise RuntimeError("build_field_mukey_map requires geopandas and pandas") from exc
 
     fields, input_files = _load_fields(fields_path, fields_glob, field_id_field, verbose)
-    ssurgo_path_resolved = _resolve(ssurgo_path)
-    if ssurgo_layer.strip():
-        ssurgo = gpd.read_file(ssurgo_path_resolved, layer=ssurgo_layer.strip())
-    else:
-        ssurgo = gpd.read_file(ssurgo_path_resolved)
-    if ssurgo.empty:
-        raise RuntimeError(f"ssurgo input is empty: {ssurgo_path}")
+    ssurgo_files: list[Path] = []
+    ssurgo_path_resolved = _resolve(ssurgo_path) if str(ssurgo_path or "").strip() else None
+    if ssurgo_path_resolved is not None:
+        if ssurgo_path_resolved.exists():
+            ssurgo_files.append(ssurgo_path_resolved)
+        elif not str(ssurgo_glob or "").strip():
+            raise FileNotFoundError(f"ssurgo_path not found: {ssurgo_path_resolved}")
+        elif verbose:
+            print(f"[build_field_mukey_map][WARN] ssurgo_path not found, falling back to ssurgo_glob: {ssurgo_path_resolved}")
+
+    if str(ssurgo_glob or "").strip():
+        matches_all: list[str] = []
+        for pat in _parse_glob_patterns(ssurgo_glob):
+            m = sorted(glob.glob(str(pat), recursive=True))
+            if not m:
+                m = sorted(glob.glob(str((_resolve(".") / str(pat)).as_posix()), recursive=True))
+            matches_all.extend(m)
+        seen_match: set[str] = set()
+        for raw in matches_all:
+            p = Path(raw)
+            key = p.resolve().as_posix().lower()
+            if key in seen_match:
+                continue
+            seen_match.add(key)
+            # Accept regular vector files and directory vector datasets (e.g., .gdb).
+            if p.is_file() or (p.is_dir() and p.suffix.lower() in {".gdb"}):
+                if p not in ssurgo_files:
+                    ssurgo_files.append(p)
+    if not ssurgo_files:
+        raise FileNotFoundError("no SSURGO files found via ssurgo_path/ssurgo_glob")
+
+    # Try explicit layer first, then common gSSURGO polygon layer names.
+    layer_candidates = [str(ssurgo_layer or "").strip()] if str(ssurgo_layer or "").strip() else []
+    layer_candidates.extend(["MUPOLYGON", "mupolygon", "MapunitPoly", "mapunit", "ssurgo_mapunit"])
+    layer_candidates.append("")  # final fallback: default layer for file
+
+    ssurgo_frames: list[Any] = []
+    ssurgo_loaded_files: list[str] = []
+    for p in ssurgo_files:
+        loaded = False
+        last_err = ""
+        for layer_name in layer_candidates:
+            try:
+                if layer_name:
+                    cand = gpd.read_file(p, layer=layer_name)
+                else:
+                    cand = gpd.read_file(p)
+            except Exception as exc:  # noqa: BLE001
+                last_err = str(exc)
+                continue
+            if cand is None or cand.empty:
+                continue
+            actual_mukey_col = None
+            by_lower = {str(c).lower(): c for c in cand.columns}
+            if mukey_field in cand.columns:
+                actual_mukey_col = mukey_field
+            else:
+                actual_mukey_col = by_lower.get(str(mukey_field).lower())
+            if actual_mukey_col is None:
+                continue
+            if cand.crs is None:
+                continue
+            cand = cand[[actual_mukey_col, "geometry"]].copy()
+            if actual_mukey_col != mukey_field:
+                cand = cand.rename(columns={actual_mukey_col: mukey_field})
+            cand[mukey_field] = cand[mukey_field].map(_to_text)
+            cand = cand[cand.geometry.notna() & ~cand.geometry.is_empty].copy()
+            if cand.empty:
+                continue
+            ssurgo_frames.append(cand)
+            ssurgo_loaded_files.append(p.as_posix())
+            loaded = True
+            if verbose:
+                lname = layer_name or "<default>"
+                print(
+                    f"[build_field_mukey_map] loaded ssurgo file={p.as_posix()} "
+                    f"layer={lname} mukey_col={actual_mukey_col} rows={len(cand)}"
+                )
+            break
+        if not loaded and verbose:
+            print(f"[build_field_mukey_map][WARN] no usable mukey polygon layer in {p.as_posix()} err={last_err[:200]}")
+
+    if not ssurgo_frames:
+        raise RuntimeError("no usable SSURGO polygon layers loaded; check ssurgo_glob/ssurgo_layer and mukey_field")
+
+    ssurgo = gpd.GeoDataFrame(pd.concat(ssurgo_frames, ignore_index=True), geometry="geometry")
     if ssurgo.crs is None:
-        raise RuntimeError("ssurgo input missing CRS")
-    if mukey_field not in ssurgo.columns:
-        raise ValueError(f"mukey_field not found in ssurgo input: {mukey_field}")
+        # Use first frame CRS if concat lost metadata.
+        ssurgo = gpd.GeoDataFrame(ssurgo, geometry="geometry", crs=ssurgo_frames[0].crs)
 
     if target_crs.strip():
         fields = fields.to_crs(target_crs)
@@ -123,22 +266,80 @@ def build_field_mukey_map(
     )
     if joined.empty:
         raise RuntimeError("no field polygons intersect SSURGO polygons")
+    # Compute overlap area and percent overlap of each field polygon by mukey.
+    field_src = fields[[field_id_field, "source_name", "geometry"]].copy()
+    field_src[field_id_field] = field_src[field_id_field].map(_to_text)
+    field_src = field_src[field_src[field_id_field].astype(str).str.len() > 0].copy()
+    field_src["field_area"] = field_src.geometry.area
 
-    pair_set: set[tuple[str, str, str]] = set()
-    for _, row in joined.iterrows():
+    ssurgo_src = ssurgo[[mukey_field, "geometry"]].copy()
+    ssurgo_src[mukey_field] = ssurgo_src[mukey_field].map(_to_text)
+    ssurgo_src = ssurgo_src[ssurgo_src[mukey_field].astype(str).str.len() > 0].copy()
+
+    intersections = gpd.overlay(field_src, ssurgo_src, how="intersection")
+    if intersections.empty:
+        raise RuntimeError("field and SSURGO geometries intersect by bbox but produced no polygon intersections")
+    intersections["overlap_area"] = intersections.geometry.area
+
+    grouped_pairs = (
+        intersections.groupby([field_id_field, mukey_field], as_index=False)["overlap_area"]
+        .sum()
+    )
+    field_area_map = (
+        field_src.groupby(field_id_field, as_index=False)["field_area"]
+        .sum()
+        .set_index(field_id_field)["field_area"]
+        .to_dict()
+    )
+    source_name_map = (
+        field_src.groupby(field_id_field, as_index=False)["source_name"]
+        .first()
+        .set_index(field_id_field)["source_name"]
+        .to_dict()
+    )
+
+    pair_rows: list[dict[str, Any]] = []
+    for _, row in grouped_pairs.iterrows():
+        field_id = _to_text(row.get(field_id_field))
+        mukey = _to_text(row.get(mukey_field))
+        overlap_area = float(row.get("overlap_area") or 0.0)
+        field_area = float(field_area_map.get(field_id, 0.0) or 0.0)
+        pct_field_overlap = (overlap_area / field_area * 100.0) if field_area > 0 else 0.0
+        pair_rows.append(
+            {
+                field_id_field: field_id,
+                mukey_field: mukey,
+                "source_name": _to_text(source_name_map.get(field_id, "")),
+                "overlap_area": overlap_area,
+                "field_area": field_area,
+                "pct_field_overlap": pct_field_overlap,
+            }
+        )
+
+    pair_rows.sort(key=lambda r: (str(r.get(field_id_field) or ""), str(r.get(mukey_field) or "")))
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in pair_rows:
         field_id = _to_text(row.get(field_id_field))
         mukey = _to_text(row.get(mukey_field))
         source_name = _to_text(row.get("source_name"))
-        if not field_id or not mukey:
-            continue
-        pair_set.add((field_id, mukey, source_name))
-
-    pairs = sorted(pair_set, key=lambda x: (x[0], x[1]))
-    grouped: dict[str, dict[str, Any]] = {}
-    for field_id, mukey, source_name in pairs:
-        item = grouped.setdefault(field_id, {"field_id": field_id, "source_name": source_name, "mukeys": []})
+        overlap_area = float(row.get("overlap_area") or 0.0)
+        pct_field_overlap = float(row.get("pct_field_overlap") or 0.0)
+        item = grouped.setdefault(
+            field_id,
+            {
+                field_id_field: field_id,
+                "source_name": source_name,
+                "field_area": float(row.get("field_area") or 0.0),
+                "mukeys": [],
+                "mukey_pct": {},
+                "mukey_overlap_area": {},
+            },
+        )
         if mukey not in item["mukeys"]:
             item["mukeys"].append(mukey)
+        item["mukey_pct"][mukey] = pct_field_overlap
+        item["mukey_overlap_area"][mukey] = overlap_area
 
     output_csv_path = _resolve(output_csv)
     output_long_path = _resolve(output_long_csv)
@@ -148,22 +349,41 @@ def build_field_mukey_map(
     summary_path.parent.mkdir(parents=True, exist_ok=True)
 
     with output_long_path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=[field_id_field, mukey_field, "source_name"])
+        w = csv.DictWriter(
+            f,
+            fieldnames=[field_id_field, mukey_field, "source_name", "overlap_area", "field_area", "pct_field_overlap"],
+        )
         w.writeheader()
-        for field_id, mukey, source_name in pairs:
-            w.writerow({field_id_field: field_id, mukey_field: mukey, "source_name": source_name})
+        for row in pair_rows:
+            w.writerow(row)
 
     with output_csv_path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=[field_id_field, "mukey_count", "mukeys_json", "source_name"])
+        w = csv.DictWriter(
+            f,
+            fieldnames=[
+                field_id_field,
+                "mukey_count",
+                "mukeys_json",
+                "mukey_pct_field_json",
+                "mukey_overlap_area_json",
+                "field_area",
+                "source_name",
+            ],
+        )
         w.writeheader()
         for field_id in sorted(grouped.keys()):
             item = grouped[field_id]
             mukeys = sorted(item["mukeys"])
+            pct_map = {mk: item["mukey_pct"].get(mk, 0.0) for mk in mukeys}
+            overlap_map = {mk: item["mukey_overlap_area"].get(mk, 0.0) for mk in mukeys}
             w.writerow(
                 {
-                    field_id_field: field_id,
+                    field_id_field: item[field_id_field],
                     "mukey_count": len(mukeys),
                     "mukeys_json": json.dumps(mukeys, separators=(",", ":")),
+                    "mukey_pct_field_json": json.dumps(pct_map, separators=(",", ":")),
+                    "mukey_overlap_area_json": json.dumps(overlap_map, separators=(",", ":")),
+                    "field_area": item.get("field_area", 0.0),
                     "source_name": item.get("source_name", ""),
                 }
             )
@@ -172,15 +392,18 @@ def build_field_mukey_map(
         "inputs": {
             "fields_path": str(fields_path or ""),
             "fields_glob": str(fields_glob or ""),
-            "ssurgo_path": ssurgo_path_resolved.as_posix(),
+            "ssurgo_path": ssurgo_path_resolved.as_posix() if ssurgo_path_resolved is not None else "",
+            "ssurgo_glob": str(ssurgo_glob or ""),
             "ssurgo_layer": str(ssurgo_layer or ""),
+            "ssurgo_loaded_files": ssurgo_loaded_files,
             "input_files": input_files,
         },
         "counts": {
             "field_rows": int(len(fields)),
             "ssurgo_rows": int(len(ssurgo)),
             "join_rows": int(len(joined)),
-            "unique_field_mukey_pairs": int(len(pairs)),
+            "intersection_rows": int(len(intersections)),
+            "unique_field_mukey_pairs": int(len(pair_rows)),
             "unique_fields": int(len(grouped)),
         },
         "outputs": {
@@ -208,6 +431,7 @@ def main() -> int:
     ap.add_argument("--fields-path", default="", help="Single field polygons vector path")
     ap.add_argument("--fields-glob", default="", help="Glob for batch field polygon vectors")
     ap.add_argument("--ssurgo-path", required=True, help="SSURGO polygon layer path with mukey column")
+    ap.add_argument("--ssurgo-glob", default="", help="Glob for SSURGO polygon files when ssurgo-path is missing or split by state")
     ap.add_argument("--ssurgo-layer", default="", help="Optional layer name when --ssurgo-path is a container (e.g. .gdb/.gpkg)")
     ap.add_argument("--field-id-field", default="tile_field_id")
     ap.add_argument("--mukey-field", default="mukey")
@@ -222,6 +446,7 @@ def main() -> int:
         fields_path=str(args.fields_path or ""),
         fields_glob=str(args.fields_glob or ""),
         ssurgo_path=str(args.ssurgo_path),
+        ssurgo_glob=str(args.ssurgo_glob or ""),
         ssurgo_layer=str(args.ssurgo_layer or ""),
         field_id_field=str(args.field_id_field),
         mukey_field=str(args.mukey_field),

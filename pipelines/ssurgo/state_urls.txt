@@ -8,3 +8,4 @@
 #
 # You can also leave this file empty and set pipeline var:
 #   ssurgo_url_template: "https://host/path/gSSURGO_{state}.gdb.zip"
+https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2063090987270
