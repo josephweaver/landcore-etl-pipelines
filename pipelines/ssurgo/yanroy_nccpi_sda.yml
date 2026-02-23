@@ -8,7 +8,7 @@ vars:
   logdir: "{workdir}/logs"
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
   ssurgo_polygon_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mapunit.gpkg"
-  ssurgo_polygon_glob: "{env.basedir}/data/ssurgo/state/extract/**/*"
+  ssurgo_polygon_glob: "{env.basedir}/data/ssurgo/state/extract/**/*.gdb,{env.basedir}/data/ssurgo/state/extract/**/*.gpkg,{env.basedir}/data/ssurgo/state/extract/**/*mu*.shp,{env.basedir}/data/ssurgo/state/extract/**/*MU*.shp"
   ssurgo_layer: ""
   field_id_field: tile_field_id
   mukey_field: mukey

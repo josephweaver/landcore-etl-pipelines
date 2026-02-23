@@ -25,6 +25,20 @@ def _to_text(value: Any) -> str:
     return str(value)
 
 
+def _parse_glob_patterns(raw: str) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for token in str(raw or "").replace(";", ",").split(","):
+        pat = str(token or "").strip()
+        if not pat:
+            continue
+        if pat in seen:
+            continue
+        seen.add(pat)
+        out.append(pat)
+    return out
+
+
 _TILE_ID_RE = re.compile(r"(h\d{2}v\d{2})", re.IGNORECASE)
 
 
@@ -155,15 +169,23 @@ def build_field_mukey_map(
             print(f"[build_field_mukey_map][WARN] ssurgo_path not found, falling back to ssurgo_glob: {ssurgo_path_resolved}")
 
     if str(ssurgo_glob or "").strip():
-        matches = sorted(glob.glob(str(ssurgo_glob), recursive=True))
-        if not matches:
-            matches = sorted(glob.glob(str((_resolve(".") / str(ssurgo_glob)).as_posix()), recursive=True))
-        for raw in matches:
+        matches_all: list[str] = []
+        for pat in _parse_glob_patterns(ssurgo_glob):
+            m = sorted(glob.glob(str(pat), recursive=True))
+            if not m:
+                m = sorted(glob.glob(str((_resolve(".") / str(pat)).as_posix()), recursive=True))
+            matches_all.extend(m)
+        seen_match: set[str] = set()
+        for raw in matches_all:
             p = Path(raw)
-            if not p.is_file():
+            key = p.resolve().as_posix().lower()
+            if key in seen_match:
                 continue
-            if p not in ssurgo_files:
-                ssurgo_files.append(p)
+            seen_match.add(key)
+            # Accept regular vector files and directory vector datasets (e.g., .gdb).
+            if p.is_file() or (p.is_dir() and p.suffix.lower() in {".gdb"}):
+                if p not in ssurgo_files:
+                    ssurgo_files.append(p)
     if not ssurgo_files:
         raise FileNotFoundError("no SSURGO files found via ssurgo_path/ssurgo_glob")
 
@@ -188,11 +210,19 @@ def build_field_mukey_map(
                 continue
             if cand is None or cand.empty:
                 continue
-            if mukey_field not in cand.columns:
+            actual_mukey_col = None
+            by_lower = {str(c).lower(): c for c in cand.columns}
+            if mukey_field in cand.columns:
+                actual_mukey_col = mukey_field
+            else:
+                actual_mukey_col = by_lower.get(str(mukey_field).lower())
+            if actual_mukey_col is None:
                 continue
             if cand.crs is None:
                 continue
-            cand = cand[[mukey_field, "geometry"]].copy()
+            cand = cand[[actual_mukey_col, "geometry"]].copy()
+            if actual_mukey_col != mukey_field:
+                cand = cand.rename(columns={actual_mukey_col: mukey_field})
             cand[mukey_field] = cand[mukey_field].map(_to_text)
             cand = cand[cand.geometry.notna() & ~cand.geometry.is_empty].copy()
             if cand.empty:
@@ -202,7 +232,10 @@ def build_field_mukey_map(
             loaded = True
             if verbose:
                 lname = layer_name or "<default>"
-                print(f"[build_field_mukey_map] loaded ssurgo file={p.as_posix()} layer={lname} rows={len(cand)}")
+                print(
+                    f"[build_field_mukey_map] loaded ssurgo file={p.as_posix()} "
+                    f"layer={lname} mukey_col={actual_mukey_col} rows={len(cand)}"
+                )
             break
         if not loaded and verbose:
             print(f"[build_field_mukey_map][WARN] no usable mukey polygon layer in {p.as_posix()} err={last_err[:200]}")
