@@ -1,15 +1,22 @@
 project_id: land_core
 requires_pipelines:
-  - pipelines/yanroy/build.yml
+  - pipelines/yanroy/polygons.yml
+  - pipelines/yanroy/yanroy_prefilter_from_facts.yml
 vars:
   dataset_id: stage.ssurgo_field_nccpi_v1
   name: ssurgo_yanroy_nccpi_sda
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
-  ssurgo_polygon_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mapunit.gpkg"
-  ssurgo_polygon_glob: "{env.basedir}/data/ssurgo/state/extract/**/*.gdb,{env.basedir}/data/ssurgo/state/extract/**/*.gpkg,{env.basedir}/data/ssurgo/state/extract/**/*mu*.shp,{env.basedir}/data/ssurgo/state/extract/**/*MU*.shp"
-  ssurgo_layer: ""
+  ssurgo_polygon_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mupolygon_yanroy_tiles.gpkg"
+  ssurgo_polygon_glob: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mupolygon_yanroy_tiles.gpkg,{env.basedir}/data/ssurgo/state/extract/**/*.gpkg,{env.basedir}/data/ssurgo/state/extract/**/*.gdb,{env.basedir}/data/ssurgo/state/extract/**/*mu*.shp,{env.basedir}/data/ssurgo/state/extract/**/*MU*.shp"
+  ssurgo_layer: ssurgo_mapunit
+  ssurgo_where: ""
+  states_of_interest_csv: "IL,MN,WI,OH,SD,IA,IN,MI,MO"
+  ssurgo_state_field: areasymbol
+  ssurgo_extent_bbox: ""
+  ssurgo_extent_crs: ""
+  ssurgo_extent_hdr: ""
   field_id_field: tile_field_id
   mukey_field: mukey
   target_crs: EPSG:5070
@@ -19,10 +26,13 @@ vars:
   sda_chunk_size: 500
   sda_sleep_seconds: 0.2
   outdir: "{workdir}/ssurgo_nccpi"
+  per_field_outdir: "{outdir}/by_field_poly"
   yanroy_polygon_glob: "{env.basedir}/data/yanroy/polygons/WELD_*_2010_field_segments.gpkg"
   field_mukey_csv: "{outdir}/field_mukey_map.csv"
   field_mukey_long_csv: "{outdir}/field_mukey_pairs.csv"
   field_mukey_summary_json: "{outdir}/field_mukey_summary.json"
+  field_mukey_long_glob: "{per_field_outdir}/*.field_mukey_pairs.csv"
+  field_mukey_max_concurrency: 6
   valu1_csv: "{outdir}/valu1_by_mukey.csv"
   field_valu1_csv: "{outdir}/field_nccpi_long.csv"
   valu1_summary_json: "{outdir}/valu1_download_summary.json"
@@ -34,9 +44,21 @@ steps:
     plugin: exec_script
     args:
       script: scripts/ssurgo/build_field_mukey_map.py
-      script_args: "--fields-path \"{yanroy_polygon_path}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-glob \"{ssurgo_polygon_glob}\" --ssurgo-layer \"{ssurgo_layer}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{field_mukey_csv}\" --output-long-csv \"{field_mukey_long_csv}\" --summary-json \"{field_mukey_summary_json}\" --target-crs \"{target_crs}\" --verbose"
+      script_args: "--fields-path \"{item}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-glob \"{ssurgo_polygon_glob}\" --ssurgo-layer \"{ssurgo_layer}\" --ssurgo-where \"{ssurgo_where}\" --states-csv \"{states_of_interest_csv}\" --state-field \"{ssurgo_state_field}\" --extent-bbox \"{ssurgo_extent_bbox}\" --extent-crs \"{ssurgo_extent_crs}\" --extent-hdr \"{ssurgo_extent_hdr}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{per_field_outdir}/{item_stem}.field_mukey_map.csv\" --output-long-csv \"{per_field_outdir}/{item_stem}.field_mukey_pairs.csv\" --summary-json \"{per_field_outdir}/{item_stem}.field_mukey_summary.json\" --target-crs \"{target_crs}\" --verbose"
       verbose: true
+    foreach_glob: "{yanroy_polygon_glob}"
+    foreach_kind: files
+    resources:
+      foreach_max_concurrency: "{field_mukey_max_concurrency}"
     output_var: field_mukey
+  - name: "{sys.step.NN}_combine_field_mukey_long"
+    plugin: combine_files
+    args:
+      input_glob: "{field_mukey_long_glob}"
+      output_file: "{field_mukey_long_csv}"
+      format: csv
+      verbose: true
+    output_var: field_mukey_combined
   - name: "{sys.step.NN}_download_valu1_nccpi_by_mukey"
     plugin: exec_script
     args:
