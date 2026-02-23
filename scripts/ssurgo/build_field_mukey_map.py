@@ -36,12 +36,15 @@ def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, verbos
 
     if str(fields_path or "").strip():
         p = _resolve(fields_path)
-        if not p.exists():
+        if p.exists():
+            gdf = gpd.read_file(p)
+            gdf["source_name"] = p.name
+            frames.append(gdf)
+            input_files.append(p.as_posix())
+        elif not str(fields_glob or "").strip():
             raise FileNotFoundError(f"fields_path not found: {p}")
-        gdf = gpd.read_file(p)
-        gdf["source_name"] = p.name
-        frames.append(gdf)
-        input_files.append(p.as_posix())
+        elif verbose:
+            print(f"[build_field_mukey_map][WARN] fields_path not found, falling back to fields_glob: {p}")
 
     if str(fields_glob or "").strip():
         matches = sorted(glob.glob(str(fields_glob), recursive=True))
@@ -123,22 +126,80 @@ def build_field_mukey_map(
     )
     if joined.empty:
         raise RuntimeError("no field polygons intersect SSURGO polygons")
+    # Compute overlap area and percent overlap of each field polygon by mukey.
+    field_src = fields[[field_id_field, "source_name", "geometry"]].copy()
+    field_src[field_id_field] = field_src[field_id_field].map(_to_text)
+    field_src = field_src[field_src[field_id_field].astype(str).str.len() > 0].copy()
+    field_src["field_area"] = field_src.geometry.area
 
-    pair_set: set[tuple[str, str, str]] = set()
-    for _, row in joined.iterrows():
+    ssurgo_src = ssurgo[[mukey_field, "geometry"]].copy()
+    ssurgo_src[mukey_field] = ssurgo_src[mukey_field].map(_to_text)
+    ssurgo_src = ssurgo_src[ssurgo_src[mukey_field].astype(str).str.len() > 0].copy()
+
+    intersections = gpd.overlay(field_src, ssurgo_src, how="intersection")
+    if intersections.empty:
+        raise RuntimeError("field and SSURGO geometries intersect by bbox but produced no polygon intersections")
+    intersections["overlap_area"] = intersections.geometry.area
+
+    grouped_pairs = (
+        intersections.groupby([field_id_field, mukey_field], as_index=False)["overlap_area"]
+        .sum()
+    )
+    field_area_map = (
+        field_src.groupby(field_id_field, as_index=False)["field_area"]
+        .sum()
+        .set_index(field_id_field)["field_area"]
+        .to_dict()
+    )
+    source_name_map = (
+        field_src.groupby(field_id_field, as_index=False)["source_name"]
+        .first()
+        .set_index(field_id_field)["source_name"]
+        .to_dict()
+    )
+
+    pair_rows: list[dict[str, Any]] = []
+    for _, row in grouped_pairs.iterrows():
+        field_id = _to_text(row.get(field_id_field))
+        mukey = _to_text(row.get(mukey_field))
+        overlap_area = float(row.get("overlap_area") or 0.0)
+        field_area = float(field_area_map.get(field_id, 0.0) or 0.0)
+        pct_field_overlap = (overlap_area / field_area * 100.0) if field_area > 0 else 0.0
+        pair_rows.append(
+            {
+                field_id_field: field_id,
+                mukey_field: mukey,
+                "source_name": _to_text(source_name_map.get(field_id, "")),
+                "overlap_area": overlap_area,
+                "field_area": field_area,
+                "pct_field_overlap": pct_field_overlap,
+            }
+        )
+
+    pair_rows.sort(key=lambda r: (str(r.get(field_id_field) or ""), str(r.get(mukey_field) or "")))
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for row in pair_rows:
         field_id = _to_text(row.get(field_id_field))
         mukey = _to_text(row.get(mukey_field))
         source_name = _to_text(row.get("source_name"))
-        if not field_id or not mukey:
-            continue
-        pair_set.add((field_id, mukey, source_name))
-
-    pairs = sorted(pair_set, key=lambda x: (x[0], x[1]))
-    grouped: dict[str, dict[str, Any]] = {}
-    for field_id, mukey, source_name in pairs:
-        item = grouped.setdefault(field_id, {"field_id": field_id, "source_name": source_name, "mukeys": []})
+        overlap_area = float(row.get("overlap_area") or 0.0)
+        pct_field_overlap = float(row.get("pct_field_overlap") or 0.0)
+        item = grouped.setdefault(
+            field_id,
+            {
+                field_id_field: field_id,
+                "source_name": source_name,
+                "field_area": float(row.get("field_area") or 0.0),
+                "mukeys": [],
+                "mukey_pct": {},
+                "mukey_overlap_area": {},
+            },
+        )
         if mukey not in item["mukeys"]:
             item["mukeys"].append(mukey)
+        item["mukey_pct"][mukey] = pct_field_overlap
+        item["mukey_overlap_area"][mukey] = overlap_area
 
     output_csv_path = _resolve(output_csv)
     output_long_path = _resolve(output_long_csv)
@@ -148,22 +209,41 @@ def build_field_mukey_map(
     summary_path.parent.mkdir(parents=True, exist_ok=True)
 
     with output_long_path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=[field_id_field, mukey_field, "source_name"])
+        w = csv.DictWriter(
+            f,
+            fieldnames=[field_id_field, mukey_field, "source_name", "overlap_area", "field_area", "pct_field_overlap"],
+        )
         w.writeheader()
-        for field_id, mukey, source_name in pairs:
-            w.writerow({field_id_field: field_id, mukey_field: mukey, "source_name": source_name})
+        for row in pair_rows:
+            w.writerow(row)
 
     with output_csv_path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=[field_id_field, "mukey_count", "mukeys_json", "source_name"])
+        w = csv.DictWriter(
+            f,
+            fieldnames=[
+                field_id_field,
+                "mukey_count",
+                "mukeys_json",
+                "mukey_pct_field_json",
+                "mukey_overlap_area_json",
+                "field_area",
+                "source_name",
+            ],
+        )
         w.writeheader()
         for field_id in sorted(grouped.keys()):
             item = grouped[field_id]
             mukeys = sorted(item["mukeys"])
+            pct_map = {mk: item["mukey_pct"].get(mk, 0.0) for mk in mukeys}
+            overlap_map = {mk: item["mukey_overlap_area"].get(mk, 0.0) for mk in mukeys}
             w.writerow(
                 {
-                    field_id_field: field_id,
+                    field_id_field: item[field_id_field],
                     "mukey_count": len(mukeys),
                     "mukeys_json": json.dumps(mukeys, separators=(",", ":")),
+                    "mukey_pct_field_json": json.dumps(pct_map, separators=(",", ":")),
+                    "mukey_overlap_area_json": json.dumps(overlap_map, separators=(",", ":")),
+                    "field_area": item.get("field_area", 0.0),
                     "source_name": item.get("source_name", ""),
                 }
             )
@@ -180,7 +260,8 @@ def build_field_mukey_map(
             "field_rows": int(len(fields)),
             "ssurgo_rows": int(len(ssurgo)),
             "join_rows": int(len(joined)),
-            "unique_field_mukey_pairs": int(len(pairs)),
+            "intersection_rows": int(len(intersections)),
+            "unique_field_mukey_pairs": int(len(pair_rows)),
             "unique_fields": int(len(grouped)),
         },
         "outputs": {
