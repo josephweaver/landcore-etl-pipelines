@@ -33,7 +33,7 @@ steps:
       output_path: "{filtered_states_path}"
       key: STUSPS
       op: in
-      values: "{states_of_interest}"
+      values: "{project.states_of_interest}"
       case_insensitive: true
     output_var: filtered_states
   - name: "{sys.step.NN}_reproject_filtered_states"
