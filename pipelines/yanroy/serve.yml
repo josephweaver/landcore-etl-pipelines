@@ -3,7 +3,7 @@ shared_with_projects:
   - gee_lee
 
 requires_pipelines:
-  - pipelines/yanroy/build.yml
+  - pipelines/yanroy/polygons.yml
 
 vars:
   dataset_id: serve.yanroy_publish_v1

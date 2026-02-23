@@ -1,6 +1,6 @@
 project_id: land_core
 requires_pipelines:
-  - pipelines/yanroy/build.yml
+  - pipelines/yanroy/filtered_rasters.yml
   - pipelines/ssurgo/conus_download.yml
 vars:
   dataset_id: stage.yanroy_raster_facts_v1

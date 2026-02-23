@@ -1,0 +1,47 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/yanroy/filtered_rasters.yml
+vars:
+  dataset_id: stage.yanroy_polygons_v1
+  name: yanroy_polygons
+  target_crs: EPSG:5070
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  yanroy_dir: "{env.basedir}/data/yanroy"
+  filtereddir: "{yanroy_dir}/filtered"
+  metadir: "{yanroy_dir}/meta"
+  polygon_dir: "{yanroy_dir}/polygons"
+  polygon_glob: "{polygon_dir}/WELD_*_2010_field_segments.gpkg"
+  polygon_combined_path: "{polygon_dir}/field_polygons.gpkg"
+  filtered_states_5070_path: "{metadir}/states.of.interest.5070.gpkg"
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+steps:
+  - name: "{sys.step.NN}_polygonize_field_id_rasters"
+    plugin: geo/geo_raster_polygonize
+    args:
+      input_raster: "{item}"
+      output_path: "{polygon_dir}/{item_stem}.gpkg"
+      value_field: field_id
+      exclude_values: 0
+      selector_path: "{filtered_states_5070_path}"
+      filter_predicate: intersects
+      target_crs: "{target_crs}"
+      dissolve_by_value: true
+      overwrite: true
+    foreach_glob: "{filtereddir}/**/WELD_*_2010_field_segments"
+    foreach_kind: files
+    output_var: field_polygons
+  - name: "{sys.step.NN}_combine_field_polygons"
+    plugin: geo/geo_vector_combine
+    args:
+      input_glob: "{polygon_glob}"
+      output_path: "{polygon_combined_path}"
+      target_crs: "{target_crs}"
+      include_source_name: true
+      source_name_field: source_name
+      overwrite: true
+      allow_empty: false
+      verbose: true
+    output_var: field_polygons_combined

@@ -4,7 +4,7 @@ shared_with_projects:
 
 requires_pipelines:
   - pipelines/prism/vpdmax_download.yml
-  - pipelines/yanroy/build.yml
+  - pipelines/yanroy/polygons.yml
 
 vars:
   dataset_id: stage.prism_vpdmax_tile_field_aggregate_v1
