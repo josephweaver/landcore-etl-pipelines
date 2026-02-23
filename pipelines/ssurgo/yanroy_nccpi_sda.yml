@@ -7,9 +7,9 @@ vars:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
-  ssurgo_polygon_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mapunit.gpkg"
-  ssurgo_polygon_glob: "{env.basedir}/data/ssurgo/state/extract/**/*.gdb,{env.basedir}/data/ssurgo/state/extract/**/*.gpkg,{env.basedir}/data/ssurgo/state/extract/**/*mu*.shp,{env.basedir}/data/ssurgo/state/extract/**/*MU*.shp"
-  ssurgo_layer: ""
+  ssurgo_polygon_path: "{env.basedir}/data/ssurgo/state/extract/gSSURGO_CONUS.gdb"
+  ssurgo_polygon_glob: "{env.basedir}/data/ssurgo/state/extract/gSSURGO_CONUS.gdb,{env.basedir}/data/ssurgo/state/extract/**/*.gdb,{env.basedir}/data/ssurgo/state/extract/**/*.gpkg,{env.basedir}/data/ssurgo/state/extract/**/*mu*.shp,{env.basedir}/data/ssurgo/state/extract/**/*MU*.shp"
+  ssurgo_layer: MUPOLYGON
   field_id_field: tile_field_id
   mukey_field: mukey
   target_crs: EPSG:5070
