@@ -413,19 +413,32 @@ def _load_ssurgo_polygons(
     return ssurgo, loaded_files, state_filter_column_used, total_state_filtered_rows
 
 
-def _load_tile_mukey_pairs(tile_mukey_csv: str, tile_field: str, mukey_field: str):
+def _load_tile_mukey_pairs(tile_mukey_csv: str, tile_field: str, mukey_field: str, *, verbose: bool = False):
     path = _resolve(tile_mukey_csv)
     if not path.exists():
         raise FileNotFoundError(f"tile_mukey_csv not found: {path.as_posix()}")
     pairs: set[tuple[str, str]] = set()
+    tile_col_used = ""
+    mukey_col_used = ""
     with path.open("r", encoding="utf-8-sig", newline="") as f:
         rdr = csv.DictReader(f)
         if not rdr.fieldnames:
             raise ValueError("tile_mukey_csv has no header")
-        tile_col = _lookup_col_case_insensitive(list(rdr.fieldnames), tile_field)
-        mukey_col = _lookup_col_case_insensitive(list(rdr.fieldnames), mukey_field)
+        cols = list(rdr.fieldnames)
+        tile_col = _lookup_col_case_insensitive(cols, tile_field)
+        if not tile_col:
+            for alias in ("tile", "tile_id"):
+                tile_col = _lookup_col_case_insensitive(cols, alias)
+                if tile_col:
+                    break
+        mukey_col = _lookup_col_case_insensitive(cols, mukey_field)
         if not tile_col or not mukey_col:
-            raise ValueError(f"tile_mukey_csv must include columns {tile_field} and {mukey_field}")
+            raise ValueError(
+                f"tile_mukey_csv must include a tile column ({tile_field} or tile/tile_id) and {mukey_field}; "
+                f"available={cols}"
+            )
+        tile_col_used = tile_col
+        mukey_col_used = mukey_col
         for row in rdr:
             tile = _derive_tile_from_text((row or {}).get(tile_col))
             mukey = _to_text((row or {}).get(mukey_col)).strip()
@@ -434,7 +447,9 @@ def _load_tile_mukey_pairs(tile_mukey_csv: str, tile_field: str, mukey_field: st
             pairs.add((tile, mukey))
     if not pairs:
         raise RuntimeError("tile_mukey_csv has no usable tile,mukey rows")
-    return path, pairs
+    if verbose:
+        _vlog(verbose, f"tile_mukey csv columns used tile={tile_col_used} mukey={mukey_col_used}")
+    return path, pairs, tile_col_used, mukey_col_used
 
 
 def build_tile_field_mukey_map(
@@ -462,7 +477,12 @@ def build_tile_field_mukey_map(
     except Exception as exc:  # noqa: BLE001
         raise RuntimeError("build_tile_field_mukey_map requires geopandas") from exc
 
-    tile_mukey_path, allowed_tile_mukey_pairs = _load_tile_mukey_pairs(tile_mukey_csv, tile_field, mukey_field)
+    tile_mukey_path, allowed_tile_mukey_pairs, tile_mukey_tile_col_used, tile_mukey_mukey_col_used = _load_tile_mukey_pairs(
+        tile_mukey_csv,
+        tile_field,
+        mukey_field,
+        verbose=verbose,
+    )
     _vlog(verbose, f"loaded tile_mukey pairs={len(allowed_tile_mukey_pairs)}")
 
     fields, input_files, tile_source = _load_fields(fields_path, fields_glob, field_id_field, tile_field, verbose)
@@ -629,6 +649,8 @@ def build_tile_field_mukey_map(
             "field_id_field": field_id_field,
             "tile_field": tile_field,
             "mukey_field": mukey_field,
+            "tile_mukey_tile_col_used": tile_mukey_tile_col_used,
+            "tile_mukey_mukey_col_used": tile_mukey_mukey_col_used,
             "target_crs": target_crs or str(ssurgo.crs),
             "tile_source": tile_source,
             "input_files": input_files,
