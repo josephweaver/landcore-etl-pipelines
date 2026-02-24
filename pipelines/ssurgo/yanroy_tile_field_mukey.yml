@@ -33,6 +33,8 @@ vars:
   tile_field_mukey_csv: "{env.basedir}/data/yanroy_ssurgo/meta/tile_field2mukey.csv"
   tile_field_mukey_long_csv: "{outdir}/tile_field_mukey_pairs.csv"
   tile_field_mukey_summary_json: "{outdir}/tile_field_mukey_summary.json"
+  duckdb_table_tile_field_mukey: rel_tile_field_mukey
+  duckdb_load_mode: replace
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
@@ -51,3 +53,15 @@ steps:
       script_args: "--tile-mukey-csv \"{tile_mukey_csv}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-glob \"{ssurgo_polygon_glob}\" --ssurgo-layer \"{ssurgo_polygon_layer}\" --states-csv \"{states_csv}\" --state-field \"{state_field}\" --field-id-field \"{field_id_field}\" --tile-field \"{tile_field}\" --mukey-field \"{mukey_field}\" --target-crs \"{target_crs}\" --output-csv \"{tile_field_mukey_csv}\" --output-long-csv \"{tile_field_mukey_long_csv}\" --summary-json \"{tile_field_mukey_summary_json}\" --verbose"
       verbose: true
     output_var: tile_field_mukey
+  - name: "{sys.step.NN}_load_tile_field_mukey_duckdb"
+    plugin: duckdb_load
+    args:
+      db_path: "{project.duckdb_path}"
+      table: "{duckdb_table_tile_field_mukey}"
+      source: "{tile_field_mukey_csv}"
+      format: csv
+      mode: "{duckdb_load_mode}"
+      csv_header: true
+      analyze: true
+      verbose: true
+    output_var: tile_field_mukey_duckdb
