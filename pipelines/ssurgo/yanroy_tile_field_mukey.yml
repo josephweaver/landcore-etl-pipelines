@@ -14,25 +14,27 @@ vars:
   maxy_field: maxy
   tile_prefix_len: 6
   tiles_csv: "{expr.join(project.tiles_of_interest)}"
+  tiles: "{project.tiles_of_interest}"
   ssurgo_path: "{env.basedir}/data/ssurgo/conus_mukey_grid/extract/MURASTER_30m.tif"
   ssurgo_layer: ""
   mukey_field: mukey
   states_csv: "{expr.join(project.states_of_interest)}"
   state_field: areasymbol
-  ssurgo_polygon_path: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mupolygon_yanroy_tiles.gpkg"
-  ssurgo_polygon_glob: "{env.basedir}/data/ssurgo/state/extract/ssurgo_mupolygon_yanroy_tiles.gpkg,{env.basedir}/data/ssurgo/state/extract/**/*.gpkg,{env.basedir}/data/ssurgo/state/extract/**/*.gdb,{env.basedir}/data/ssurgo/state/extract/**/*mu*.shp,{env.basedir}/data/ssurgo/state/extract/**/*MU*.shp"
-  ssurgo_polygon_layer: ssurgo_mapunit
   yanroy_polygon_glob: "{env.basedir}/data/yanroy/polygons/WELD_*_2010_field_segments.gpkg"
   field_id_field: tile_field_id
   tile_field: tile_id
   target_crs: EPSG:5070
   outdir: "{workdir}/tile_field_mukey"
+  per_tile_outdir: "{outdir}/by_tile"
   tile_mukey_csv: "{outdir}/tile_mukey.csv"
   tile_counts_csv: "{outdir}/tile_mukey_counts.csv"
   tile_mukey_summary_json: "{outdir}/tile_mukey_summary.json"
   tile_field_mukey_csv: "{env.basedir}/data/yanroy_ssurgo/meta/tile_field2mukey.csv"
   tile_field_mukey_long_csv: "{outdir}/tile_field_mukey_pairs.csv"
   tile_field_mukey_summary_json: "{outdir}/tile_field_mukey_summary.json"
+  tile_field_mukey_glob: "{per_tile_outdir}/*.tile_field_mukey_map.csv"
+  tile_field_mukey_long_glob: "{per_tile_outdir}/*.tile_field_mukey_pairs.csv"
+  tile_field_mukey_max_concurrency: 8
   duckdb_table_tile_field_mukey: rel_tile_field_mukey
   duckdb_load_mode: replace
 dirs:
@@ -50,9 +52,28 @@ steps:
     plugin: exec_script
     args:
       script: scripts/ssurgo/build_tile_field_mukey_map.py
-      script_args: "--tile-mukey-csv \"{tile_mukey_csv}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_polygon_path}\" --ssurgo-glob \"{ssurgo_polygon_glob}\" --ssurgo-layer \"{ssurgo_polygon_layer}\" --states-csv \"{states_csv}\" --state-field \"{state_field}\" --field-id-field \"{field_id_field}\" --tile-field \"{tile_field}\" --mukey-field \"{mukey_field}\" --target-crs \"{target_crs}\" --output-csv \"{tile_field_mukey_csv}\" --output-long-csv \"{tile_field_mukey_long_csv}\" --summary-json \"{tile_field_mukey_summary_json}\" --verbose"
+      script_args: "--tile \"{item}\" --tile-mukey-csv \"{tile_mukey_csv}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_path}\" --field-id-field \"{field_id_field}\" --tile-field \"{tile_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{per_tile_outdir}/{item}.tile_field_mukey_map.csv\" --output-long-csv \"{per_tile_outdir}/{item}.tile_field_mukey_pairs.csv\" --summary-json \"{per_tile_outdir}/{item}.tile_field_mukey_summary.json\" --verbose"
       verbose: true
+    foreach: tiles
+    resources:
+      foreach_max_concurrency: "{tile_field_mukey_max_concurrency}"
     output_var: tile_field_mukey
+  - name: "{sys.step.NN}_combine_tile_field_mukey"
+    plugin: combine_files
+    args:
+      input_glob: "{tile_field_mukey_glob}"
+      output_file: "{tile_field_mukey_csv}"
+      format: csv
+      verbose: true
+    output_var: tile_field_mukey_combined
+  - name: "{sys.step.NN}_combine_tile_field_mukey_long"
+    plugin: combine_files
+    args:
+      input_glob: "{tile_field_mukey_long_glob}"
+      output_file: "{tile_field_mukey_long_csv}"
+      format: csv
+      verbose: true
+    output_var: tile_field_mukey_long_combined
   - name: "{sys.step.NN}_load_tile_field_mukey_duckdb"
     plugin: duckdb_load
     args:

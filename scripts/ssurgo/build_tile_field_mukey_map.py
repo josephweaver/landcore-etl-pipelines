@@ -1,10 +1,11 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
 import csv
 import glob
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -52,71 +53,17 @@ def _lookup_col_case_insensitive(cols: list[Any], target: str) -> str:
     return str(by_lower.get(str(target or "").strip().lower()) or "")
 
 
-def _parse_states_csv(raw: str) -> list[str]:
-    out: list[str] = []
-    seen: set[str] = set()
-    for token in str(raw or "").replace(";", ",").split(","):
-        state = str(token or "").strip().upper()
-        if not state:
-            continue
-        if state in seen:
-            continue
-        seen.add(state)
-        out.append(state)
-    return out
-
-
-def _normalize_state_value(value: Any, state_col_name: str) -> str:
-    text = re.sub(r"[^A-Za-z0-9]", "", _to_text(value).upper())
-    if not text:
-        return ""
-    col_lower = str(state_col_name or "").strip().lower()
-    if col_lower in {"areasymbol", "areasym", "area_symbol"}:
-        return text[:2] if len(text) >= 2 else text
-    if len(text) == 2:
-        return text
-    if len(text) >= 2 and text[:2].isalpha():
-        return text[:2]
-    return text
-
-
-def _apply_state_filter(cand, *, states: list[str], state_field: str, verbose: bool):
-    if not states:
-        return cand, "", 0
-    selected_col = ""
-    if str(state_field or "").strip():
-        selected_col = _lookup_col_case_insensitive(list(cand.columns), str(state_field))
-    if not selected_col:
-        for name in (
-            "stusps",
-            "state",
-            "state_abbr",
-            "state_name",
-            "statefp",
-            "areasymbol",
-            "areasym",
-            "area_symbol",
-        ):
-            selected_col = _lookup_col_case_insensitive(list(cand.columns), name)
-            if selected_col:
-                break
-    if not selected_col:
-        _vlog(verbose, f"state filter requested but no matching state column found; available={list(cand.columns)}")
-        return cand, "", 0
-
-    wanted = {str(s).upper() for s in states}
-    before = int(len(cand))
-    state_codes = cand[selected_col].map(lambda v: _normalize_state_value(v, selected_col))
-    cand = cand[state_codes.isin(wanted)].copy()
-    after = int(len(cand))
-    _vlog(verbose, f"applied state filter column={selected_col} states={sorted(wanted)} rows_before={before} rows_after={after}")
-    return cand, selected_col, max(0, before - after)
-
-
 def _derive_tile_from_text(value: Any) -> str:
     text = _to_text(value).lower()
     m = TILE_RE.search(text)
     return m.group(1).lower() if m else ""
+
+
+def _normalize_tile(tile_text: str) -> str:
+    t = _derive_tile_from_text(tile_text)
+    if not t:
+        raise ValueError(f"invalid tile id: {tile_text}")
+    return t
 
 
 def _derive_field_id_column(fields, field_id_field: str, verbose: bool):
@@ -133,7 +80,7 @@ def _derive_field_id_column(fields, field_id_field: str, verbose: bool):
                 fields["tile_id"].map(_to_text).str.lower().str.strip() + "_" + fields["field_id"].map(_to_text).str.strip()
             )
             if verbose:
-                print("[build_tile_field_mukey_map] derived tile_field_id from tile_id + field_id")
+                _vlog(verbose, "derived tile_field_id from tile_id + field_id")
             return fields
         if has_field_id and has_source:
             fields = fields.copy()
@@ -142,282 +89,19 @@ def _derive_field_id_column(fields, field_id_field: str, verbose: bool):
                 fields["tile_id"].map(_to_text).str.lower().str.strip() + "_" + fields["field_id"].map(_to_text).str.strip()
             )
             if verbose:
-                print("[build_tile_field_mukey_map] derived tile_field_id from source_name + field_id")
+                _vlog(verbose, "derived tile_field_id from source_name + field_id")
             return fields
+
     cols = ", ".join(str(c) for c in fields.columns)
     raise ValueError(f"field_id_field not found/derivable: {field_id_field}; available columns: {cols}")
 
 
-def _derive_tile_column(fields, tile_field: str, field_id_field: str, verbose: bool):
-    selected = _lookup_col_case_insensitive(list(fields.columns), tile_field)
-    if selected:
-        fields = fields.copy()
-        fields["tile"] = fields[selected].map(_derive_tile_from_text)
-        fields = fields[fields["tile"].astype(str).str.len() > 0].copy()
-        _vlog(verbose, f"derived tile from column={selected} rows={len(fields)}")
-        return fields, selected
-
-    fields = fields.copy()
-    fields["tile"] = fields[field_id_field].map(lambda v: _derive_tile_from_text(_to_text(v).split("_")[0]))
-    missing = int((fields["tile"].astype(str).str.len() == 0).sum())
-    if missing > 0 and "source_name" in fields.columns:
-        mask = fields["tile"].astype(str).str.len() == 0
-        fields.loc[mask, "tile"] = fields.loc[mask, "source_name"].map(_derive_tile_from_text)
-    fields = fields[fields["tile"].astype(str).str.len() > 0].copy()
-    if fields.empty:
-        raise RuntimeError("unable to derive tile ids for field polygons")
-    _vlog(verbose, f"derived tile from {field_id_field}/source_name rows={len(fields)}")
-    return fields, "<derived>"
-
-
-def _load_fields(fields_path: str, fields_glob: str, field_id_field: str, tile_field: str, verbose: bool):
-    try:
-        import geopandas as gpd
-        import pandas as pd
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("build_tile_field_mukey_map requires geopandas and pandas") from exc
-
-    frames: list[Any] = []
-    input_files: list[str] = []
-    if str(fields_path or "").strip():
-        p = _resolve(fields_path)
-        if p.exists():
-            gdf = gpd.read_file(p)
-            gdf["source_name"] = p.name
-            frames.append(gdf)
-            input_files.append(p.as_posix())
-        elif not str(fields_glob or "").strip():
-            raise FileNotFoundError(f"fields_path not found: {p}")
-        elif verbose:
-            print(f"[build_tile_field_mukey_map][WARN] fields_path not found, falling back to fields_glob: {p}")
-
-    if str(fields_glob or "").strip():
-        matches = []
-        for pat in _parse_glob_patterns(fields_glob):
-            m = sorted(glob.glob(str(pat), recursive=True))
-            if not m:
-                m = sorted(glob.glob(str((_resolve(".") / str(pat)).as_posix()), recursive=True))
-            matches.extend(m)
-        for raw in matches:
-            p = Path(raw)
-            if not p.is_file():
-                continue
-            gdf = gpd.read_file(p)
-            gdf["source_name"] = p.name
-            frames.append(gdf)
-            input_files.append(p.resolve().as_posix())
-
-    if not frames:
-        raise ValueError("provide fields_path or fields_glob with at least one vector file")
-
-    fields = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), geometry="geometry")
-    if fields.empty:
-        raise RuntimeError("field polygons input is empty")
-    if fields.crs is None:
-        raise RuntimeError("field polygons missing CRS")
-    fields = _derive_field_id_column(fields, field_id_field, verbose)
-    fields, tile_source = _derive_tile_column(fields, tile_field, field_id_field, verbose)
-    fields[field_id_field] = fields[field_id_field].map(_to_text)
-    fields = fields[fields[field_id_field].astype(str).str.len() > 0].copy()
-    fields = fields[fields.geometry.notna() & ~fields.geometry.is_empty].copy()
-    if fields.empty:
-        raise RuntimeError("field polygons empty after id/tile/geometry filtering")
-    _vlog(verbose, f"loaded field polygons rows={len(fields)} files={len(input_files)} tile_source={tile_source}")
-    return fields, input_files, tile_source
-
-
-def _list_vector_layers(path: Path) -> list[str]:
-    try:
-        import fiona
-
-        layers = fiona.listlayers(path.as_posix())
-        if layers:
-            return [str(x) for x in layers if str(x).strip()]
-    except Exception:
-        pass
-    try:
-        import pyogrio
-
-        layers_info = pyogrio.list_layers(path.as_posix())
-        out: list[str] = []
-        for row in layers_info:  # type: ignore[assignment]
-            try:
-                name = str(row[0]).strip()
-            except Exception:
-                name = str(row).strip()
-            if name:
-                out.append(name)
-        return out
-    except Exception:
-        return []
-
-
-def _resolve_layer_crs(path: Path, layer_name: str):
-    try:
-        import fiona
-
-        if layer_name:
-            with fiona.open(path.as_posix(), layer=layer_name) as src:
-                return src.crs_wkt or src.crs
-        with fiona.open(path.as_posix()) as src:
-            return src.crs_wkt or src.crs
-    except Exception:
-        return None
-
-
-def _transform_bbox(bounds: tuple[float, float, float, float], src_crs: Any, dst_crs: Any):
-    if src_crs is None or dst_crs is None:
-        return bounds
-    try:
-        from pyproj import CRS, Transformer
-
-        src = CRS.from_user_input(src_crs)
-        dst = CRS.from_user_input(dst_crs)
-        if src == dst:
-            return bounds
-        minx, miny, maxx, maxy = bounds
-        xs = [minx, minx, maxx, maxx]
-        ys = [miny, maxy, miny, maxy]
-        transformer = Transformer.from_crs(src, dst, always_xy=True)
-        tx, ty = transformer.transform(xs, ys)
-        return (float(min(tx)), float(min(ty)), float(max(tx)), float(max(ty)))
-    except Exception:
-        return bounds
-
-
-def _load_ssurgo_polygons(
-    *,
-    ssurgo_path: str,
-    ssurgo_glob: str,
-    ssurgo_layer: str,
-    ssurgo_where: str,
-    states_csv: str,
-    state_field: str,
-    mukey_field: str,
-    bbox: tuple[float, float, float, float],
-    bbox_crs: Any,
-    verbose: bool,
-):
-    try:
-        import geopandas as gpd
-        import pandas as pd
-    except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("build_tile_field_mukey_map requires geopandas and pandas") from exc
-
-    ssurgo_files: list[Path] = []
-    ssurgo_path_resolved = _resolve(ssurgo_path) if str(ssurgo_path or "").strip() else None
-    if ssurgo_path_resolved is not None:
-        if ssurgo_path_resolved.exists():
-            ssurgo_files.append(ssurgo_path_resolved)
-        elif not str(ssurgo_glob or "").strip():
-            raise FileNotFoundError(f"ssurgo_path not found: {ssurgo_path_resolved}")
-        elif verbose:
-            print(f"[build_tile_field_mukey_map][WARN] ssurgo_path not found, falling back to ssurgo_glob: {ssurgo_path_resolved}")
-    if str(ssurgo_glob or "").strip():
-        matches_all: list[str] = []
-        for pat in _parse_glob_patterns(ssurgo_glob):
-            m = sorted(glob.glob(str(pat), recursive=True))
-            if not m:
-                m = sorted(glob.glob(str((_resolve(".") / str(pat)).as_posix()), recursive=True))
-            matches_all.extend(m)
-        seen_match: set[str] = set()
-        for raw in matches_all:
-            p = Path(raw)
-            key = p.resolve().as_posix().lower()
-            if key in seen_match:
-                continue
-            seen_match.add(key)
-            if p.is_file() or (p.is_dir() and p.suffix.lower() in {".gdb"}):
-                if p not in ssurgo_files:
-                    ssurgo_files.append(p)
-    if not ssurgo_files:
-        raise FileNotFoundError("no SSURGO files found via ssurgo_path/ssurgo_glob")
-
-    states = _parse_states_csv(states_csv)
-    frames: list[Any] = []
-    loaded_files: list[str] = []
-    total_state_filtered_rows = 0
-    state_filter_column_used = ""
-    for p in ssurgo_files:
-        layer_candidates: list[str] = []
-        if str(ssurgo_layer or "").strip():
-            layer_candidates.append(str(ssurgo_layer).strip())
-        layer_candidates.extend(["MUPOLYGON", "mupolygon", "MapunitPoly", "mapunit", "ssurgo_mapunit"])
-        if p.suffix.lower() in {".gdb", ".gpkg"}:
-            layer_candidates.extend(_list_vector_layers(p))
-        layer_candidates.append("")
-
-        deduped: list[str] = []
-        seen_keys: set[str] = set()
-        for item in layer_candidates:
-            key = str(item).strip().lower()
-            if key in seen_keys:
-                continue
-            seen_keys.add(key)
-            deduped.append(str(item))
-
-        loaded = False
-        for layer_name in deduped:
-            read_kwargs: dict[str, Any] = {}
-            if layer_name:
-                read_kwargs["layer"] = layer_name
-            if str(ssurgo_where or "").strip():
-                read_kwargs["where"] = str(ssurgo_where).strip()
-            layer_crs = _resolve_layer_crs(p, str(layer_name or ""))
-            read_kwargs["bbox"] = _transform_bbox(bbox, bbox_crs, layer_crs)
-            try:
-                cand = gpd.read_file(p, **read_kwargs)
-            except Exception:
-                continue
-            if cand is None or cand.empty:
-                continue
-            actual_mukey_col = _lookup_col_case_insensitive(list(cand.columns), mukey_field)
-            if not actual_mukey_col:
-                continue
-            if cand.crs is None:
-                continue
-            if states:
-                cand, state_col_used, state_dropped = _apply_state_filter(
-                    cand,
-                    states=states,
-                    state_field=state_field,
-                    verbose=verbose,
-                )
-                if state_col_used:
-                    state_filter_column_used = state_col_used
-                total_state_filtered_rows += int(state_dropped)
-                if cand.empty:
-                    continue
-            cand = cand[[actual_mukey_col, "geometry"]].copy()
-            if actual_mukey_col != mukey_field:
-                cand = cand.rename(columns={actual_mukey_col: mukey_field})
-            cand[mukey_field] = cand[mukey_field].map(_to_text)
-            cand = cand[cand[mukey_field].astype(str).str.len() > 0].copy()
-            cand = cand[cand.geometry.notna() & ~cand.geometry.is_empty].copy()
-            if cand.empty:
-                continue
-            frames.append(cand)
-            loaded_files.append(p.as_posix())
-            loaded = True
-            _vlog(verbose, f"loaded ssurgo file={p.as_posix()} layer={layer_name or '<default>'} rows={len(cand)}")
-            break
-        if not loaded:
-            _vlog(verbose, f"skipping ssurgo file with no usable layer: {p.as_posix()}")
-
-    if not frames:
-        raise RuntimeError("no usable SSURGO polygon layers loaded")
-
-    ssurgo = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), geometry="geometry")
-    if ssurgo.crs is None:
-        ssurgo = gpd.GeoDataFrame(ssurgo, geometry="geometry", crs=frames[0].crs)
-    return ssurgo, loaded_files, state_filter_column_used, total_state_filtered_rows
-
-
-def _load_tile_mukey_pairs(tile_mukey_csv: str, tile_field: str, mukey_field: str, *, verbose: bool = False):
+def _load_tile_mukeys(tile_mukey_csv: str, tile: str, tile_field: str, mukey_field: str) -> tuple[Path, set[int], str, str]:
     path = _resolve(tile_mukey_csv)
     if not path.exists():
         raise FileNotFoundError(f"tile_mukey_csv not found: {path.as_posix()}")
-    pairs: set[tuple[str, str]] = set()
+
+    out: set[int] = set()
     tile_col_used = ""
     mukey_col_used = ""
     with path.open("r", encoding="utf-8-sig", newline="") as f:
@@ -434,138 +118,276 @@ def _load_tile_mukey_pairs(tile_mukey_csv: str, tile_field: str, mukey_field: st
         mukey_col = _lookup_col_case_insensitive(cols, mukey_field)
         if not tile_col or not mukey_col:
             raise ValueError(
-                f"tile_mukey_csv must include a tile column ({tile_field} or tile/tile_id) and {mukey_field}; "
-                f"available={cols}"
+                f"tile_mukey_csv must include tile ({tile_field} or tile/tile_id) and {mukey_field}; available={cols}"
             )
         tile_col_used = tile_col
         mukey_col_used = mukey_col
+
+        wanted = _normalize_tile(tile)
         for row in rdr:
-            tile = _derive_tile_from_text((row or {}).get(tile_col))
-            mukey = _to_text((row or {}).get(mukey_col)).strip()
-            if not tile or not mukey:
+            row_tile = _derive_tile_from_text((row or {}).get(tile_col))
+            if row_tile != wanted:
                 continue
-            pairs.add((tile, mukey))
-    if not pairs:
-        raise RuntimeError("tile_mukey_csv has no usable tile,mukey rows")
-    if verbose:
-        _vlog(verbose, f"tile_mukey csv columns used tile={tile_col_used} mukey={mukey_col_used}")
-    return path, pairs, tile_col_used, mukey_col_used
+            mk_text = _to_text((row or {}).get(mukey_col)).strip()
+            if not mk_text:
+                continue
+            try:
+                mk = int(float(mk_text))
+            except Exception:
+                continue
+            if mk > 0:
+                out.add(mk)
+
+    if not out:
+        raise RuntimeError(f"no mukeys found in tile_mukey_csv for tile={tile}")
+    return path, out, tile_col_used, mukey_col_used
 
 
-def build_tile_field_mukey_map(
+def _expand_fields_files(fields_path: str, fields_glob: str) -> list[Path]:
+    files: list[Path] = []
+    seen: set[str] = set()
+    if str(fields_path or "").strip():
+        p = _resolve(fields_path)
+        if p.exists() and p.is_file():
+            key = p.resolve().as_posix().lower()
+            seen.add(key)
+            files.append(p.resolve())
+        elif not str(fields_glob or "").strip():
+            raise FileNotFoundError(f"fields_path not found: {p}")
+
+    for pat in _parse_glob_patterns(fields_glob):
+        matches = sorted(glob.glob(str(pat), recursive=True))
+        if not matches:
+            matches = sorted(glob.glob(str((_resolve(".") / str(pat)).as_posix()), recursive=True))
+        for raw in matches:
+            p = Path(raw)
+            if not p.is_file():
+                continue
+            key = p.resolve().as_posix().lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            files.append(p.resolve())
+    return files
+
+
+def _load_fields_for_tile(
     *,
-    tile_mukey_csv: str,
+    tile: str,
     fields_path: str,
     fields_glob: str,
-    ssurgo_path: str,
-    ssurgo_glob: str,
-    ssurgo_layer: str,
-    ssurgo_where: str,
-    states_csv: str,
-    state_field: str,
     field_id_field: str,
     tile_field: str,
-    mukey_field: str,
-    target_crs: str,
-    output_csv: str,
-    output_long_csv: str,
-    summary_json: str,
     verbose: bool,
-) -> dict[str, Any]:
+):
     try:
         import geopandas as gpd
+        import pandas as pd
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("build_tile_field_mukey_map requires geopandas") from exc
+        raise RuntimeError("build_tile_field_mukey_map requires geopandas and pandas") from exc
 
-    tile_mukey_path, allowed_tile_mukey_pairs, tile_mukey_tile_col_used, tile_mukey_mukey_col_used = _load_tile_mukey_pairs(
-        tile_mukey_csv,
-        tile_field,
-        mukey_field,
-        verbose=verbose,
-    )
-    _vlog(verbose, f"loaded tile_mukey pairs={len(allowed_tile_mukey_pairs)}")
+    tile_norm = _normalize_tile(tile)
+    files = _expand_fields_files(fields_path, fields_glob)
+    if not files:
+        raise ValueError("provide fields_path or fields_glob with at least one vector file")
 
-    fields, input_files, tile_source = _load_fields(fields_path, fields_glob, field_id_field, tile_field, verbose)
-    if target_crs.strip():
-        fields = fields.to_crs(target_crs)
-    fields_bbox = tuple(float(v) for v in fields.total_bounds.tolist())
-    fields_bbox_crs: Any = fields.crs
-    _vlog(verbose, f"field rows={len(fields)} unique_tiles={fields['tile'].nunique()}")
+    tile_hint = tile_norm.lower()
+    selected_files: list[Path] = [p for p in files if tile_hint in p.name.lower()]
+    if not selected_files:
+        # Fallback if filenames do not include tile token.
+        selected_files = files
 
-    ssurgo, ssurgo_loaded_files, state_filter_column_used, state_filtered_rows = _load_ssurgo_polygons(
-        ssurgo_path=ssurgo_path,
-        ssurgo_glob=ssurgo_glob,
-        ssurgo_layer=ssurgo_layer,
-        ssurgo_where=ssurgo_where,
-        states_csv=states_csv,
-        state_field=state_field,
-        mukey_field=mukey_field,
-        bbox=fields_bbox,
-        bbox_crs=fields_bbox_crs,
-        verbose=verbose,
-    )
+    frames: list[Any] = []
+    input_files: list[str] = []
+    for p in selected_files:
+        gdf = gpd.read_file(p)
+        if gdf is None or gdf.empty:
+            continue
+        gdf["source_name"] = p.name
+        frames.append(gdf)
+        input_files.append(p.as_posix())
 
-    if target_crs.strip():
-        ssurgo = ssurgo.to_crs(target_crs)
+    if not frames:
+        raise RuntimeError(f"no field polygons loaded for tile={tile_norm}")
+
+    fields = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), geometry="geometry")
+    if fields.empty:
+        raise RuntimeError(f"field polygons empty for tile={tile_norm}")
+    if fields.crs is None:
+        raise RuntimeError("field polygons missing CRS")
+
+    fields = _derive_field_id_column(fields, field_id_field, verbose)
+
+    tile_col = _lookup_col_case_insensitive(list(fields.columns), tile_field)
+    if tile_col:
+        fields = fields.copy()
+        fields["tile"] = fields[tile_col].map(_derive_tile_from_text)
     else:
-        fields = fields.to_crs(ssurgo.crs)
+        fields = fields.copy()
+        fields["tile"] = fields[field_id_field].map(lambda v: _derive_tile_from_text(_to_text(v).split("_")[0]))
+        if "source_name" in fields.columns:
+            miss = fields["tile"].astype(str).str.len() == 0
+            fields.loc[miss, "tile"] = fields.loc[miss, "source_name"].map(_derive_tile_from_text)
 
-    field_src = fields[["tile", field_id_field, "source_name", "geometry"]].copy()
-    field_src["field_area"] = field_src.geometry.area
-    field_src = field_src[field_src["field_area"] > 0].copy()
-    if field_src.empty:
-        raise RuntimeError("field polygons have zero area after projection")
+    fields[field_id_field] = fields[field_id_field].map(_to_text)
+    fields = fields[fields[field_id_field].astype(str).str.len() > 0].copy()
+    fields = fields[fields.geometry.notna() & ~fields.geometry.is_empty].copy()
+    fields = fields[fields["tile"].map(_derive_tile_from_text) == tile_norm].copy()
+    if fields.empty:
+        raise RuntimeError(f"no field polygons found for tile={tile_norm}")
 
-    ssurgo_src = ssurgo[[mukey_field, "geometry"]].copy()
-    ssurgo_src[mukey_field] = ssurgo_src[mukey_field].map(_to_text)
-    ssurgo_src = ssurgo_src[ssurgo_src[mukey_field].astype(str).str.len() > 0].copy()
-    if ssurgo_src.empty:
-        raise RuntimeError("SSURGO polygons empty after mukey filtering")
+    return fields, input_files
 
-    _vlog(verbose, "running field x ssurgo intersection overlay")
-    intersections = gpd.overlay(field_src, ssurgo_src, how="intersection")
-    if intersections.empty:
-        raise RuntimeError("no field polygons intersect SSURGO polygons")
-    intersections["overlap_area"] = intersections.geometry.area
-    intersections = intersections[intersections["overlap_area"] > 0].copy()
-    if intersections.empty:
-        raise RuntimeError("overlay produced no positive-area intersections")
 
-    grouped_pairs = (
-        intersections.groupby(["tile", field_id_field, "source_name", "field_area", mukey_field], as_index=False)["overlap_area"].sum()
-    )
+def _tile_field_mukey_from_raster(
+    *,
+    fields,
+    tile: str,
+    mukeys: set[int],
+    ssurgo_raster_path: str,
+    field_id_field: str,
+    mukey_field: str,
+    verbose: bool,
+):
+    import numpy as np
+    import rasterio
+    from rasterio.features import rasterize
+    from rasterio.windows import from_bounds
 
-    filtered_rows: list[dict[str, Any]] = []
-    dropped_not_in_tile_mukey = 0
-    for row in grouped_pairs.itertuples(index=False):
-        tile = _derive_tile_from_text(getattr(row, "tile", ""))
-        field_id = _to_text(getattr(row, field_id_field))
-        mukey = _to_text(getattr(row, mukey_field)).strip()
-        field_area = float(getattr(row, "field_area") or 0.0)
-        overlap_area = float(getattr(row, "overlap_area") or 0.0)
-        if not tile or not field_id or not mukey:
-            continue
-        if (tile, mukey) not in allowed_tile_mukey_pairs:
-            dropped_not_in_tile_mukey += 1
-            continue
-        pct_field_overlap = (overlap_area / field_area * 100.0) if field_area > 0 else 0.0
-        filtered_rows.append(
-            {
-                "tile": tile,
-                field_id_field: field_id,
-                mukey_field: mukey,
-                "source_name": _to_text(getattr(row, "source_name", "")),
-                "overlap_area": overlap_area,
-                "field_area": field_area,
-                "pct_field_overlap": pct_field_overlap,
-            }
+    raster_path = _resolve(ssurgo_raster_path)
+    if not raster_path.exists():
+        raise FileNotFoundError(f"ssurgo raster path not found: {raster_path.as_posix()}")
+
+    with rasterio.open(raster_path) as ds:
+        if ds.crs is None:
+            raise RuntimeError("SSURGO raster missing CRS")
+
+        if fields.crs != ds.crs:
+            fields = fields.to_crs(ds.crs)
+
+        bounds = tuple(float(v) for v in fields.total_bounds.tolist())
+        minx, miny, maxx, maxy = bounds
+        if maxx <= minx or maxy <= miny:
+            raise RuntimeError(f"invalid tile bounds for tile={tile}")
+
+        win = from_bounds(minx, miny, maxx, maxy, transform=ds.transform).round_offsets().round_lengths()
+        if win.width <= 0 or win.height <= 0:
+            raise RuntimeError(f"empty raster window for tile={tile}")
+
+        mukey_arr = ds.read(1, window=win, masked=False)
+        if mukey_arr.size == 0:
+            raise RuntimeError(f"empty raster array for tile={tile}")
+
+        win_transform = ds.window_transform(win)
+        nodata = ds.nodata
+
+        field_rows = fields.reset_index(drop=True).copy()
+        field_rows["_fid_idx"] = np.arange(1, len(field_rows) + 1, dtype=np.int64)
+        field_rows["field_area"] = field_rows.geometry.area
+        field_rows = field_rows[field_rows["field_area"] > 0].copy()
+        if field_rows.empty:
+            raise RuntimeError(f"no positive-area field polygons for tile={tile}")
+
+        shapes = [(geom, int(fid)) for geom, fid in zip(field_rows.geometry, field_rows["_fid_idx"], strict=False)]
+        field_idx_arr = rasterize(
+            shapes,
+            out_shape=(int(win.height), int(win.width)),
+            transform=win_transform,
+            fill=0,
+            all_touched=False,
+            dtype="int32",
         )
-    if not filtered_rows:
-        raise RuntimeError("no tile/field/mukey rows remained after tile_mukey filtering")
-    filtered_rows.sort(key=lambda r: (str(r["tile"]), str(r[field_id_field]), str(r[mukey_field])))
+
+        valid = field_idx_arr > 0
+        if nodata is not None:
+            valid &= mukey_arr != nodata
+        valid &= mukey_arr > 0
+
+        if mukeys:
+            valid &= np.isin(mukey_arr, np.array(sorted(mukeys), dtype=mukey_arr.dtype))
+
+        if not np.any(valid):
+            raise RuntimeError(f"no overlapping raster cells for tile={tile} after mukey filter")
+
+        fid_vals = field_idx_arr[valid].astype(np.int64)
+        mukey_vals = mukey_arr[valid].astype(np.int64)
+        pairs = np.column_stack((fid_vals, mukey_vals))
+        uniq, counts = np.unique(pairs, axis=0, return_counts=True)
+
+        # Pixel area in CRS units (for EPSG:5070 this is m^2).
+        a = float(win_transform.a)
+        b = float(win_transform.b)
+        d = float(win_transform.d)
+        e = float(win_transform.e)
+        pixel_area = abs(a * e - b * d)
+        if pixel_area <= 0:
+            raise RuntimeError("invalid raster transform pixel area")
+
+        field_meta: dict[int, dict[str, Any]] = {}
+        for row in field_rows.itertuples(index=False):
+            idx = int(getattr(row, "_fid_idx"))
+            field_meta[idx] = {
+                "field_id": _to_text(getattr(row, field_id_field)),
+                "source_name": _to_text(getattr(row, "source_name", "")),
+                "field_area": float(getattr(row, "field_area") or 0.0),
+            }
+
+        long_rows: list[dict[str, Any]] = []
+        for i in range(len(uniq)):
+            fid = int(uniq[i, 0])
+            mk = int(uniq[i, 1])
+            cnt = int(counts[i])
+            meta = field_meta.get(fid)
+            if not meta:
+                continue
+            field_area = float(meta["field_area"] or 0.0)
+            overlap_area = float(cnt) * pixel_area
+            pct_field_overlap = (overlap_area / field_area * 100.0) if field_area > 0 else 0.0
+            long_rows.append(
+                {
+                    "tile": _normalize_tile(tile),
+                    field_id_field: str(meta["field_id"]),
+                    mukey_field: str(mk),
+                    "source_name": str(meta["source_name"]),
+                    "overlap_area": overlap_area,
+                    "field_area": field_area,
+                    "pct_field_overlap": pct_field_overlap,
+                    "pixel_count": cnt,
+                    "pixel_area": pixel_area,
+                }
+            )
+
+    if not long_rows:
+        raise RuntimeError(f"no tile/field/mukey rows produced for tile={tile}")
+
+    long_rows.sort(key=lambda r: (str(r["tile"]), str(r[field_id_field]), str(r[mukey_field])))
+    return long_rows, fields, raster_path
+
+
+def _write_outputs(
+    *,
+    long_rows: list[dict[str, Any]],
+    field_id_field: str,
+    mukey_field: str,
+    output_csv: str,
+    output_long_csv: str,
+):
+    out_csv = _resolve(output_csv)
+    out_long = _resolve(output_long_csv)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    out_long.parent.mkdir(parents=True, exist_ok=True)
+
+    with out_long.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(
+            f,
+            fieldnames=["tile", field_id_field, mukey_field, "source_name", "overlap_area", "field_area", "pct_field_overlap", "pixel_count", "pixel_area"],
+        )
+        w.writeheader()
+        for row in long_rows:
+            w.writerow(row)
 
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in filtered_rows:
+    for row in long_rows:
         key = (str(row["tile"]), str(row[field_id_field]))
         item = grouped.setdefault(
             key,
@@ -585,23 +407,7 @@ def build_tile_field_mukey_map(
         item["mukey_pct"][mk] = float(row.get("pct_field_overlap") or 0.0)
         item["mukey_overlap_area"][mk] = float(row.get("overlap_area") or 0.0)
 
-    output_csv_path = _resolve(output_csv)
-    output_long_path = _resolve(output_long_csv)
-    summary_path = _resolve(summary_json)
-    output_csv_path.parent.mkdir(parents=True, exist_ok=True)
-    output_long_path.parent.mkdir(parents=True, exist_ok=True)
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
-
-    with output_long_path.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(
-            f,
-            fieldnames=["tile", field_id_field, mukey_field, "source_name", "overlap_area", "field_area", "pct_field_overlap"],
-        )
-        w.writeheader()
-        for row in filtered_rows:
-            w.writerow(row)
-
-    with output_csv_path.open("w", encoding="utf-8", newline="") as f:
+    with out_csv.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(
             f,
             fieldnames=[
@@ -634,67 +440,105 @@ def build_tile_field_mukey_map(
                 }
             )
 
+    return out_csv, out_long, grouped
+
+
+def build_tile_field_mukey_map(
+    *,
+    tile: str,
+    tile_mukey_csv: str,
+    fields_path: str,
+    fields_glob: str,
+    ssurgo_path: str,
+    field_id_field: str,
+    tile_field: str,
+    mukey_field: str,
+    output_csv: str,
+    output_long_csv: str,
+    summary_json: str,
+    verbose: bool,
+) -> dict[str, Any]:
+    tile_norm = _normalize_tile(tile)
+    tile_mukey_path, tile_mukeys, tile_col_used, mukey_col_used = _load_tile_mukeys(
+        tile_mukey_csv,
+        tile_norm,
+        tile_field,
+        mukey_field,
+    )
+    _vlog(verbose, f"tile={tile_norm} mukeys={len(tile_mukeys)} from={tile_mukey_path.as_posix()}")
+
+    fields, input_files = _load_fields_for_tile(
+        tile=tile_norm,
+        fields_path=fields_path,
+        fields_glob=fields_glob,
+        field_id_field=field_id_field,
+        tile_field=tile_field,
+        verbose=verbose,
+    )
+
+    long_rows, fields_projected, raster_path = _tile_field_mukey_from_raster(
+        fields=fields,
+        tile=tile_norm,
+        mukeys=tile_mukeys,
+        ssurgo_raster_path=ssurgo_path,
+        field_id_field=field_id_field,
+        mukey_field=mukey_field,
+        verbose=verbose,
+    )
+
+    out_csv, out_long, grouped = _write_outputs(
+        long_rows=long_rows,
+        field_id_field=field_id_field,
+        mukey_field=mukey_field,
+        output_csv=output_csv,
+        output_long_csv=output_long_csv,
+    )
+
+    summary_path = _resolve(summary_json)
+    summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary = {
         "inputs": {
+            "tile": tile_norm,
             "tile_mukey_csv": tile_mukey_path.as_posix(),
+            "tile_mukey_tile_col_used": tile_col_used,
+            "tile_mukey_mukey_col_used": mukey_col_used,
             "fields_path": str(fields_path or ""),
             "fields_glob": str(fields_glob or ""),
-            "ssurgo_path": str(ssurgo_path or ""),
-            "ssurgo_glob": str(ssurgo_glob or ""),
-            "ssurgo_layer": str(ssurgo_layer or ""),
-            "ssurgo_where": str(ssurgo_where or ""),
-            "states_csv": str(states_csv or ""),
-            "state_field": str(state_field or ""),
-            "state_filter_column_used": state_filter_column_used,
+            "ssurgo_path": raster_path.as_posix(),
             "field_id_field": field_id_field,
             "tile_field": tile_field,
             "mukey_field": mukey_field,
-            "tile_mukey_tile_col_used": tile_mukey_tile_col_used,
-            "tile_mukey_mukey_col_used": tile_mukey_mukey_col_used,
-            "target_crs": target_crs or str(ssurgo.crs),
-            "tile_source": tile_source,
             "input_files": input_files,
-            "ssurgo_loaded_files": ssurgo_loaded_files,
         },
         "counts": {
-            "tile_mukey_pairs": int(len(allowed_tile_mukey_pairs)),
-            "field_rows": int(len(field_src)),
-            "ssurgo_rows": int(len(ssurgo_src)),
-            "intersection_rows": int(len(intersections)),
-            "candidate_pairs_before_tile_mukey_filter": int(len(grouped_pairs)),
-            "pairs_dropped_not_in_tile_mukey": int(dropped_not_in_tile_mukey),
-            "unique_tile_field_mukey_pairs": int(len(filtered_rows)),
+            "tile_mukey_count": int(len(tile_mukeys)),
+            "field_rows": int(len(fields_projected)),
+            "unique_tile_field_mukey_pairs": int(len(long_rows)),
             "unique_tile_field_rows": int(len(grouped)),
-            "state_filtered_rows": int(state_filtered_rows),
         },
         "outputs": {
-            "output_csv": output_csv_path.as_posix(),
-            "output_long_csv": output_long_path.as_posix(),
+            "output_csv": out_csv.as_posix(),
+            "output_long_csv": out_long.as_posix(),
             "summary_json": summary_path.as_posix(),
         },
     }
     summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
-    _vlog(verbose, f"complete rows={summary['counts']['unique_tile_field_mukey_pairs']}")
+    _vlog(verbose, f"complete tile={tile_norm} pairs={len(long_rows)}")
     return summary
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(
-        description="Build tile->field->mukey map with percent field overlap, filtered by existing tile->mukey pairs."
+        description="Build tile->field->mukey map for one tile using SSURGO MUKEY raster intersections."
     )
+    ap.add_argument("--tile", required=True, help="Tile id (e.g. h17v08)")
     ap.add_argument("--tile-mukey-csv", required=True, help="CSV produced by build_tile_mukey_map.py")
     ap.add_argument("--fields-path", default="", help="Single field polygons vector path")
     ap.add_argument("--fields-glob", default="", help="Glob for field polygon vectors")
-    ap.add_argument("--ssurgo-path", required=True, help="SSURGO polygon layer path")
-    ap.add_argument("--ssurgo-glob", default="", help="Glob for SSURGO polygon files")
-    ap.add_argument("--ssurgo-layer", default="", help="Optional SSURGO layer name")
-    ap.add_argument("--ssurgo-where", default="", help="Optional OGR SQL where-clause for SSURGO reads")
-    ap.add_argument("--states-csv", default="", help="Optional state filter list")
-    ap.add_argument("--state-field", default="areasymbol", help="Optional SSURGO state-like field")
+    ap.add_argument("--ssurgo-path", required=True, help="SSURGO MUKEY raster path (e.g. MURASTER_30m.tif)")
     ap.add_argument("--field-id-field", default="tile_field_id")
     ap.add_argument("--tile-field", default="tile_id", help="Field polygon column containing tile id")
     ap.add_argument("--mukey-field", default="mukey")
-    ap.add_argument("--target-crs", default="EPSG:5070")
     ap.add_argument("--output-csv", required=True, help="Wide CSV grouped by tile+field")
     ap.add_argument("--output-long-csv", required=True, help="Long CSV one row per tile+field+mukey")
     ap.add_argument("--summary-json", required=True)
@@ -702,19 +546,14 @@ def main() -> int:
     args = ap.parse_args()
 
     build_tile_field_mukey_map(
+        tile=str(args.tile),
         tile_mukey_csv=str(args.tile_mukey_csv),
         fields_path=str(args.fields_path or ""),
         fields_glob=str(args.fields_glob or ""),
         ssurgo_path=str(args.ssurgo_path),
-        ssurgo_glob=str(args.ssurgo_glob or ""),
-        ssurgo_layer=str(args.ssurgo_layer or ""),
-        ssurgo_where=str(args.ssurgo_where or ""),
-        states_csv=str(args.states_csv or ""),
-        state_field=str(args.state_field or ""),
         field_id_field=str(args.field_id_field),
         tile_field=str(args.tile_field),
         mukey_field=str(args.mukey_field),
-        target_crs=str(args.target_crs or ""),
         output_csv=str(args.output_csv),
         output_long_csv=str(args.output_long_csv),
         summary_json=str(args.summary_json),
