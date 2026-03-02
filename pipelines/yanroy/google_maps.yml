@@ -22,6 +22,10 @@ vars:
   serve_mbtiles_summary: "{serve_dir}/field_polygons.mbtiles.summary.json"
   serve_tiles_dir: "{serve_dir}/tiles"
   serve_tiles_summary: "{serve_dir}/field_polygons.tiles.summary.json"
+  serve_bundle_zip: "{serve_dir}/soil_health_risk_model_gmap_data.zip"
+  gdrive_remote: gdrive
+  gdrive_dst_dir: Data/ETL/serve/soil-health-risk-model-gmap-data
+  upload_bundle_to_gdrive: true
   vector_tile_layer_name: yanroy_fields
   vector_tile_min_zoom: 6
   vector_tile_max_zoom: 14
@@ -62,3 +66,24 @@ steps:
       script_args: "--input-ndjson \"{serve_ndjson}\" --output-tiles-dir \"{serve_tiles_dir}\" --layer-name \"{vector_tile_layer_name}\" --minimum-zoom {vector_tile_min_zoom} --maximum-zoom {vector_tile_max_zoom} --tippecanoe-bin \"{tippecanoe_bin}\" --summary-json \"{serve_tiles_summary}\" --verbose"
       verbose: true
     output_var: vector_tiles
+
+  - name: "{sys.step.NN}_package_gmap_bundle_zip"
+    plugin: zip_create
+    args:
+      input_paths: "{serve_tiles_dir},{serve_keys_csv}"
+      output_zip: "{serve_bundle_zip}"
+      overwrite: true
+      compression: deflated
+      verbose: true
+    output_var: gmap_bundle_zip
+
+  - name: "{sys.step.NN}_upload_gmap_bundle_to_gdrive"
+    when: upload_bundle_to_gdrive
+    plugin: gdrive_upload
+    args:
+      remote: "{gdrive_remote}"
+      dst: "{gdrive_dst_dir}"
+      input_path: "{serve_bundle_zip}"
+      no_clobber: false
+      verbose: true
+    output_var: gmap_bundle_upload
