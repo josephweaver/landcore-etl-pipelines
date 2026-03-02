@@ -21,6 +21,8 @@ vars:
   serve_ndjson_summary: "{serve_dir}/field_polygons.ndjson.summary.json"
   serve_mbtiles: "{serve_dir}/field_polygons.mbtiles"
   serve_mbtiles_summary: "{serve_dir}/field_polygons.mbtiles.summary.json"
+  serve_tiles_dir: "{serve_dir}/tiles"
+  serve_tiles_summary: "{serve_dir}/field_polygons.tiles.summary.json"
   serve_keys_csv: "{serve_dir}/google_maps_field_keys.csv"
   serve_keys_summary: "{serve_dir}/google_maps_field_keys.summary.json"
   vector_tile_layer_name: yanroy_fields
@@ -50,7 +52,7 @@ steps:
     plugin: exec_script
     args:
       script: "scripts/yanroy/build_vector_tiles_with_tippecanoe.py"
-      script_args: "--input-ndjson \"{serve_ndjson}\" --output-mbtiles \"{serve_mbtiles}\" --layer-name \"{vector_tile_layer_name}\" --minimum-zoom {vector_tile_min_zoom} --maximum-zoom {vector_tile_max_zoom} --tippecanoe-bin \"{tippecanoe_bin}\" --summary-json \"{serve_mbtiles_summary}\" --verbose"
+      script_args: "--input-ndjson \"{serve_ndjson}\" --output-tiles-dir \"{serve_tiles_dir}\" --layer-name \"{vector_tile_layer_name}\" --minimum-zoom {vector_tile_min_zoom} --maximum-zoom {vector_tile_max_zoom} --tippecanoe-bin \"{tippecanoe_bin}\" --summary-json \"{serve_tiles_summary}\" --verbose"
       verbose: true
     output_var: vector_tiles
 
