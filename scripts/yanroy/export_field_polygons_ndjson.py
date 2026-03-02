@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 from typing import Any
+
+
+_TILE_RE = re.compile(r"(?i)\b(h\d{2}v\d{2})\b")
 
 
 def _to_scalar(value: Any):
@@ -55,6 +59,12 @@ def export_field_polygons_ndjson(
             field_value = _to_scalar(row.get(field_field)) if field_field in row else None
             id_value = _to_scalar(row.get(id_field)) if id_field in row else None
             source_value = _to_scalar(row.get(source_name_field)) if source_name_field in row else None
+
+            # Backfill tile_id from source filename patterns like WELD_h12v04_2010_field_segments.*
+            if tile_value in (None, "") and source_value not in (None, ""):
+                m = _TILE_RE.search(str(source_value))
+                if m:
+                    tile_value = m.group(1).lower()
 
             if id_value in (None, "") and tile_value not in (None, "") and field_value not in (None, ""):
                 id_value = f"{tile_value}_{field_value}"

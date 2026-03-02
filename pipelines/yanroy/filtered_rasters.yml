@@ -1,7 +1,7 @@
 project_id: land_core
 requires_pipelines:
-  - pipelines/yanroy/download.yml
-  - pipelines/tiger/state.yml
+  - download.yml
+  - ../tiger/state.yml
 vars:
   dataset_id: stage.yanroy_filtered_rasters_v1
   name: yanroy_filtered_rasters

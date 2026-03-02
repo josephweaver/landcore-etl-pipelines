@@ -1,6 +1,6 @@
 project_id: land_core
 requires_pipelines:
-  - pipelines/yanroy/filtered_rasters.yml
+  - filtered_rasters.yml
 vars:
   dataset_id: stage.yanroy_polygons_v1
   name: yanroy_polygons
