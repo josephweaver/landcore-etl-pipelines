@@ -10,7 +10,7 @@ vars:
   logdir: "{workdir}/logs"
   yanroy_dir: "{env.basedir}/data/yanroy"
   fields_dir: "{yanroy_dir}/filtered"
-  tiles_csv: "{yanroy_dir}/meta/tiles.of.interest.csv"
+  filtered_csv: "{yanroy_dir}/meta/filtered.csv"
   polygon_combined_path: "{yanroy_dir}/polygons/field_polygons.gpkg"
   serve_dir: "{yanroy_dir}/serve"
   serve_polygons_path: "{serve_dir}/field_polygons_4326.gpkg"
@@ -48,7 +48,7 @@ steps:
     plugin: exec_script
     args:
       script: "scripts/yanroy/build_google_maps_field_keys.py"
-      script_args: "--tiles-csv \"{tiles_csv}\" --fields-dir \"{fields_dir}\" --output-csv \"{serve_keys_csv}\" --summary-json \"{serve_keys_summary}\" --verbose"
+      script_args: "--filtered-csv \"{filtered_csv}\" --fields-dir \"{fields_dir}\" --output-csv \"{serve_keys_csv}\" --summary-json \"{serve_keys_summary}\" --verbose"
       verbose: true
     output_var: google_maps_keys
 

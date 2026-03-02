@@ -3,6 +3,7 @@
 import argparse
 import csv
 import json
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Iterable, List, Sequence
@@ -22,26 +23,112 @@ _IGNORED_SUFFIXES = {
 }
 
 
+_TILE_ID_RE = re.compile(r"(?i)^h\d{2}v\d{2}$")
+_TILE_ID_FIND_RE = re.compile(r"(?i)\b(h\d{2}v\d{2})\b")
+
+
+def _normalize_tile_id(value: str) -> str:
+    return str(value or "").strip().lower()
+
+
+def _ordered_unique(items: Iterable[str]) -> List[str]:
+    out: List[str] = []
+    seen: set[str] = set()
+    for raw in items:
+        tile = _normalize_tile_id(raw)
+        if not tile or tile in seen:
+            continue
+        seen.add(tile)
+        out.append(tile)
+    return out
+
+
 def _read_tiles_of_interest(path: Path) -> List[str]:
     if not path.exists():
-        raise FileNotFoundError(f"tiles csv not found: {path}")
+        return []
     with path.open("r", encoding="utf-8-sig", newline="") as f:
         rdr = csv.DictReader(f)
         if not rdr.fieldnames:
             raise ValueError("tiles.of.interest.csv has no header")
         if "tile_id" not in rdr.fieldnames:
             raise ValueError("tiles.of.interest.csv missing tile_id column")
-        seen: set[str] = set()
         ordered: List[str] = []
         for row in rdr:
-            tile_id = str(row.get("tile_id") or "").strip().lower()
-            if not tile_id or tile_id in seen:
-                continue
-            seen.add(tile_id)
-            ordered.append(tile_id)
-    if not ordered:
-        raise ValueError("tiles.of.interest.csv did not contain any tile_id values")
-    return ordered
+            ordered.append(str(row.get("tile_id") or ""))
+    return _ordered_unique(ordered)
+
+
+def _read_tiles_from_filtered_csv(path: Path) -> List[str]:
+    if not path.exists():
+        return []
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
+        rdr = csv.DictReader(f)
+        if not rdr.fieldnames:
+            raise ValueError("filtered.csv has no header")
+        names = [str(n or "").strip() for n in (rdr.fieldnames or [])]
+        lowered = [n.lower() for n in names]
+        tile_col = ""
+        for candidate in ["tile_id", "tile", "tile_name"]:
+            if candidate in lowered:
+                tile_col = names[lowered.index(candidate)]
+                break
+
+        ordered: List[str] = []
+        for row in rdr:
+            value = ""
+            if tile_col:
+                value = str(row.get(tile_col) or "")
+            if not value:
+                for v in row.values():
+                    m = _TILE_ID_FIND_RE.search(str(v or ""))
+                    if m:
+                        value = m.group(1)
+                        break
+            ordered.append(value)
+    return _ordered_unique(ordered)
+
+
+def _discover_tiles_from_fields_dir(fields_dir: Path) -> List[str]:
+    if not fields_dir.exists() or not fields_dir.is_dir():
+        return []
+    tiles: List[str] = []
+    for p in sorted(fields_dir.iterdir()):
+        if not p.is_dir():
+            continue
+        tile = _normalize_tile_id(p.name)
+        if _TILE_ID_RE.match(tile):
+            tiles.append(tile)
+    return _ordered_unique(tiles)
+
+
+def _resolve_tiles(
+    *,
+    tiles_csv: Path | None,
+    filtered_csv: Path | None,
+    fields_dir: Path,
+    verbose: bool = False,
+) -> tuple[List[str], str]:
+    if tiles_csv is not None:
+        tiles = _read_tiles_of_interest(tiles_csv)
+        if tiles:
+            return tiles, "tiles_csv"
+        if verbose:
+            print(f"[build_google_maps_field_keys][WARN] tiles csv missing/empty: {tiles_csv.as_posix()}")
+
+    if filtered_csv is not None:
+        tiles = _read_tiles_from_filtered_csv(filtered_csv)
+        if tiles:
+            return tiles, "filtered_csv"
+        if verbose:
+            print(f"[build_google_maps_field_keys][WARN] filtered csv missing/empty: {filtered_csv.as_posix()}")
+
+    tiles = _discover_tiles_from_fields_dir(fields_dir)
+    if tiles:
+        return tiles, "fields_dir"
+
+    raise RuntimeError(
+        "unable to determine tile ids from tiles csv, filtered csv, or fields_dir subfolders"
+    )
 
 
 def _candidate_rasters(tile_dir: Path) -> Sequence[Path]:
@@ -142,15 +229,21 @@ def _build_rows(tiles: Iterable[str], fields_dir: Path, verbose: bool = False) -
 
 
 def build_google_maps_field_keys(
-    tiles_csv: Path,
+    tiles_csv: Path | None,
+    filtered_csv: Path | None,
     fields_dir: Path,
     output_csv: Path,
     summary_json: Path,
     verbose: bool = False,
 ) -> int:
-    tiles = _read_tiles_of_interest(tiles_csv)
     if not fields_dir.exists() or not fields_dir.is_dir():
         raise FileNotFoundError(f"fields dir not found: {fields_dir}")
+    tiles, tile_source = _resolve_tiles(
+        tiles_csv=tiles_csv,
+        filtered_csv=filtered_csv,
+        fields_dir=fields_dir,
+        verbose=verbose,
+    )
 
     key_rows, tile_rows = _build_rows(tiles=tiles, fields_dir=fields_dir, verbose=verbose)
 
@@ -164,6 +257,9 @@ def build_google_maps_field_keys(
         w.writerows(key_rows)
 
     summary = {
+        "tile_source": tile_source,
+        "tiles_csv": tiles_csv.resolve().as_posix() if tiles_csv is not None else "",
+        "filtered_csv": filtered_csv.resolve().as_posix() if filtered_csv is not None else "",
         "tiles_requested": len(tiles),
         "tiles_ok": sum(1 for r in tile_rows if r["status"] == "ok"),
         "tiles_missing_raster": sum(1 for r in tile_rows if r["status"] == "missing_raster"),
@@ -185,11 +281,12 @@ def build_google_maps_field_keys(
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description=(
-            "Build Google Maps key table using tiles.of.interest + Yanroy field_id rasters. "
+            "Build Google Maps key table from Yanroy field_id rasters. "
             "primary_key format: <tile_id>_<field_id>."
         )
     )
-    ap.add_argument("--tiles-csv", required=True, help="Path to tiles.of.interest.csv")
+    ap.add_argument("--tiles-csv", default="", help="Optional path to tiles.of.interest.csv")
+    ap.add_argument("--filtered-csv", default="", help="Optional path to filtered.csv containing tile ids")
     ap.add_argument("--fields-dir", required=True, help="Root directory of Yanroy tile folders")
     ap.add_argument("--output-csv", required=True, help="Output CSV for primary keys")
     ap.add_argument("--summary-json", required=True, help="Output summary JSON")
@@ -199,7 +296,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[build_google_maps_field_keys][WARN] ignoring unknown args: {' '.join(unknown)}")
 
     build_google_maps_field_keys(
-        tiles_csv=Path(args.tiles_csv).expanduser().resolve(),
+        tiles_csv=(Path(args.tiles_csv).expanduser().resolve() if str(args.tiles_csv or "").strip() else None),
+        filtered_csv=(Path(args.filtered_csv).expanduser().resolve() if str(args.filtered_csv or "").strip() else None),
         fields_dir=Path(args.fields_dir).expanduser().resolve(),
         output_csv=Path(args.output_csv).expanduser().resolve(),
         summary_json=Path(args.summary_json).expanduser().resolve(),
