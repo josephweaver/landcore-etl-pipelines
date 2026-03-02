@@ -24,7 +24,7 @@ vars:
   vector_tile_min_zoom: 6
   vector_tile_max_zoom: 14
   tippecanoe_bin: tippecanoe
-  build_vector_tiles: false
+  build_vector_tiles: true
 
 steps:
   - name: "{sys.step.NN}_reproject_polygons_for_google_maps"
