@@ -1,6 +1,6 @@
-project_id: land_core
+﻿project_id: land_core
 shared_with_projects:
-  - gee_lee
+  - crop_insurance
 
 vars:
   dataset_id: stage.prism_vpdmax_field_year_v1
@@ -31,4 +31,5 @@ steps:
     plugin: echo.py
     args:
       message: "Scaffold only: implement raster->field aggregation step next (vpdmax_7/vpdmax_8 by tile_field_ID,year)."
+
 

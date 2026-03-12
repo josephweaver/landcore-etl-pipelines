@@ -1,6 +1,6 @@
-project_id: land_core
+﻿project_id: land_core
 shared_with_projects:
-  - gee_lee
+  - crop_insurance
 
 requires_pipelines:
   - polygons.yml
@@ -63,3 +63,4 @@ steps:
       script_args: "--filtered-csv \"{filtered_csv}\" --fields-dir \"{fields_dir}\" --output-csv \"{serve_keys_csv}\" --summary-json \"{serve_keys_summary}\" --verbose"
       verbose: true
     output_var: google_maps_keys
+

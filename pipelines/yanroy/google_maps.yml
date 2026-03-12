@@ -1,6 +1,6 @@
-project_id: land_core
+﻿project_id: land_core
 shared_with_projects:
-  - gee_lee
+  - crop_insurance
 
 vars:
   dataset_id: serve.yanroy_google_maps_v1
@@ -87,3 +87,4 @@ steps:
       no_clobber: false
       verbose: true
     output_var: gmap_bundle_upload
+

@@ -1,6 +1,6 @@
-project_id: land_core
+﻿project_id: land_core
 shared_with_projects:
-  - gee_lee
+  - crop_insurance
 
 requires_pipelines:
   - pipelines/prism/vpdmax_download.yml
@@ -46,3 +46,4 @@ steps:
       output_file: "{combined_out_csv}"
       format: csv
     output_var: combined_stats
+
