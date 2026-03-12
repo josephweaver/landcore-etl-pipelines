@@ -1,0 +1,13 @@
+﻿version: 1
+engine: duckdb
+workspace_id: land_core.default
+
+description: >
+  Project-level baseline DuckDB workspace for LandCore query modeling.
+  Keep stable shared table/join definitions here.
+
+tables: []
+joins: []
+
+settings:
+  default_limit: 100
