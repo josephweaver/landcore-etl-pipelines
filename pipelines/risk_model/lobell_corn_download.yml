@@ -1,0 +1,27 @@
+project_id: land_core
+
+vars:
+  dataset_id: raw.lobell_corn_yield_rasters_v1
+  name: lobell_corn_download
+  gdrive_remote: gdrive
+  gdrive_src: Data/Yield/Corn
+  gdrive_glob: "*.tif"
+  lobell_dir: "{env.basedir}/data/lobell/corn"
+  rawdir: "{lobell_dir}/raw"
+
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+
+steps:
+  - name: "{sys.step.NN}_download_lobell_corn_rasters"
+    plugin: gdrive_download
+    args:
+      remote: "{gdrive_remote}"
+      src: "{gdrive_src}"
+      glob: "{gdrive_glob}"
+      out: "{rawdir}"
+      recursive: false
+      no_clobber: true
+      verbose: true
+    output_var: staged_raw
