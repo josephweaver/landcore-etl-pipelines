@@ -54,6 +54,7 @@ steps:
     foreach: years
     resources:
       foreach_max_concurrency: "{year_parallelism}"
+      mem: "16G"
     output_var: combined_corn_year
 
   - name: "{sys.step.NN}_aggregate_corn_fields_by_year"
