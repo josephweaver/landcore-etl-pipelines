@@ -83,7 +83,9 @@ Guiding rule for this plan:
    - current implementation path:
      - `pipelines/lobell/corn_download.yml`
      - `pipelines/lobell/corn_field_year.yml`
-     - `scripts/model/aggregate_lobell_corn_to_fields.py`
+     - plugin-first year fanout using:
+       - `geo_raster_combine`
+       - `geo_county_raster_aggregate`
 
 3. `pipelines/lobell/tillage_field_year.yml`
    - dataset: `stage.lobell_tillage_field_year_v1`
@@ -232,7 +234,8 @@ Pipelines:
 - [ ] Emit canonical per-dataset outputs before the final merged Lobell table.
 - [x] First corn ETL path exists:
   - raw download from Google Drive `Data/Yield/Corn`
-  - aggregation from raw corn rasters to YanRoy `tile_field_ID` field-year rows
+  - raster combine at the year level
+  - parallelized year-wise field aggregation to YanRoy `tile_field_ID` rows
 - [ ] Mirror aggregation logic from:
   - `../RiskModel-etl/R/lobell/0210-extract-lobell-corn-tiles.R`
   - `../RiskModel-etl/R/lobell/0208-extract-lobell-tillage-tiles.R`

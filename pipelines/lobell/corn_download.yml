@@ -21,7 +21,7 @@ steps:
       src: "{gdrive_src}"
       glob: "{gdrive_glob}"
       out: "{rawdir}"
-      recursive: false
+      recursive: true
       no_clobber: true
       verbose: true
     output_var: staged_raw
