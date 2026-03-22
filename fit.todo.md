@@ -70,7 +70,7 @@ Guiding rule for this plan:
      - `FIPS` if available at this stage
 
 ### B) Lobell source datasets
-2. `pipelines/risk_model/lobell_corn_field_year.yml`
+2. `pipelines/lobell/corn_field_year.yml`
    - dataset: `stage.lobell_corn_yanroy_field_year_v1`
    - grain: one row per field-year
    - columns:
@@ -81,11 +81,11 @@ Guiding rule for this plan:
      - `unscaled_yield`
    - lineage: historical `0210` extract + `0310` combine
    - current implementation path:
-     - `pipelines/risk_model/lobell_corn_download.yml`
-     - `pipelines/risk_model/lobell_corn_field_year.yml`
+     - `pipelines/lobell/corn_download.yml`
+     - `pipelines/lobell/corn_field_year.yml`
      - `scripts/model/aggregate_lobell_corn_to_fields.py`
 
-3. `pipelines/risk_model/lobell_tillage_field_year.yml`
+3. `pipelines/lobell/tillage_field_year.yml`
    - dataset: `stage.lobell_tillage_field_year_v1`
    - grain: one row per field-year
    - columns:
@@ -97,7 +97,7 @@ Guiding rule for this plan:
      - optional tillage shares / QA fields
    - lineage: historical `0208` extract + `0308` combine
 
-4. `pipelines/risk_model/lobell_soy_field_year.yml`
+4. `pipelines/lobell/soy_field_year.yml`
    - dataset: `stage.lobell_soy_field_year_v1`
    - grain: one row per field-year
    - columns:
@@ -108,7 +108,7 @@ Guiding rule for this plan:
      - `soy_yield_mean`
    - lineage: historical `0209` extract + `0309` combine
 
-5. `pipelines/risk_model/lobell_field_year.yml`
+5. `pipelines/lobell/field_year.yml`
    - dataset: `stage.lobell_field_year_v1`
    - purpose: canonical merged Lobell field-year table for modeling
    - inputs:
@@ -221,11 +221,11 @@ Pipeline: `pipelines/risk_model/field_index.yml`
 
 ### 2) Lobell corn + tillage ingest/normalize
 Pipelines:
-- `pipelines/risk_model/lobell_corn_download.yml`
-- `pipelines/risk_model/lobell_corn_field_year.yml`
-- `pipelines/risk_model/lobell_tillage_field_year.yml`
-- `pipelines/risk_model/lobell_soy_field_year.yml`
-- `pipelines/risk_model/lobell_field_year.yml`
+- `pipelines/lobell/corn_download.yml`
+- `pipelines/lobell/corn_field_year.yml`
+- `pipelines/lobell/tillage_field_year.yml`
+- `pipelines/lobell/soy_field_year.yml`
+- `pipelines/lobell/field_year.yml`
 - [ ] Ingest Lobell inputs from defined source (gdrive/http/local).
 - [ ] Convert historical extract-stage logic into ETL fanout over `tile x year`.
 - [ ] Normalize each Lobell source to field-year grain independently.
@@ -242,7 +242,7 @@ Pipelines:
   - NA/coverage thresholds for yield and tillage outputs.
 - [x] ETL conversion of the historical Lobell combine semantics now exists as an initial bridge:
   - `scripts/model/build_lobell_field_year.py`
-  - `pipelines/risk_model/lobell_corn_tillage_ingest.yml`
+  - `pipelines/lobell/corn_tillage_ingest.yml`
   - this should be treated as the first bridge artifact, then split into the decoupled pipelines above.
 - [ ] Remaining Lobell ETL work:
   - convert the raster extraction stage (`0208/0209/0210`) into ETL fanout over `tile x year`,

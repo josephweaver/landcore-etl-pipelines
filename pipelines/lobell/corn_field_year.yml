@@ -1,7 +1,7 @@
 project_id: land_core
 
 requires_pipelines:
-  - pipelines/risk_model/lobell_corn_download.yml
+  - pipelines/lobell/corn_download.yml
   - pipelines/yanroy/polygons.yml
 
 vars:
