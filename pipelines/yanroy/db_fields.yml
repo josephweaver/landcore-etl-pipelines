@@ -30,6 +30,7 @@ vars:
   duckdb_boundaries_sql: "{duckdb_repo_path}/views/yanroy/field_boundaries.sql"
   duckdb_fields_summary: "{workdir}/duckdb_fields.summary.json"
   duckdb_boundaries_summary: "{workdir}/duckdb_boundaries.summary.json"
+  build_db_fields_mem: "16G"
   source: yanroy
   resolution: 30m
   valid_start: ""
@@ -42,6 +43,8 @@ steps:
       script: "scripts/yanroy/build_db_fields.py"
       script_args: "--input-vector \"{polygon_combined_path}\" --field-csv \"{field_csv}\" --field-parquet \"{field_parquet}\" --field-boundary-csv \"{field_boundary_csv}\" --field-boundary-parquet \"{field_boundary_parquet}\" --field-boundary-gpkg \"{field_boundary_gpkg}\" --summary-json \"{summary_json}\" --source \"{source}\" --resolution \"{resolution}\" --valid-start \"{valid_start}\" --valid-end \"{valid_end}\" --field-id-field field_id --tile-field tile_id --source-name-field source_name --verbose"
       verbose: true
+    resources:
+      mem: "{build_db_fields_mem}"
     output_var: db_fields
 
   - name: "{sys.step.NN}_publish_field_parquet_gcs"
