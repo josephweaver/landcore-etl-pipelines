@@ -18,6 +18,18 @@
   - Rerun `pipelines/ssurgo/yanroy_nccpi_sda.yml` step 0 then step 1.
   - Verify `field_mukey_pairs.csv` overlap percentages before NCCPI joins.
 
+## Progress Notes (2026-03-25)
+- Completed today:
+  - Replaced the `pipelines/prism/vpdmax_field_aggregate.yml` scaffold with a runnable bridge path:
+    - aggregate monthly PRISM rasters to YanRoy field polygons,
+    - combine monthly field outputs,
+    - normalize to one `tile_field_ID` + `year` row with `vpdmax_7` / `vpdmax_8`.
+  - Added `scripts/prism/normalize_vpdmax_field_year.py` to convert monthly aggregate outputs into the field-year schema expected by the tillage-model path.
+- Immediate next actions:
+  - Run `pipelines/prism/vpdmax_field_aggregate.yml` against real staged PRISM inputs and inspect the summary JSON for missing July/August coverage.
+  - Decide whether to keep the current bridge filename or rename/promote it to the planned `pipelines/prism/vpdmax_field_year.yml`.
+  - Wire the resulting PRISM field-year output into the next downstream covariate/model-input pipeline instead of treating PRISM as a standalone scaffold.
+
 ## Objective
 Replace:
 - `RiskModel-HPCC/controller/controller.R`

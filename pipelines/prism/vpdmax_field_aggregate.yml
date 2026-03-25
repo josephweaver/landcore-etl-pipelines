@@ -1,35 +1,60 @@
-﻿project_id: land_core
+project_id: land_core
 shared_with_projects:
   - crop_insurance
+
+requires_pipelines:
+  - pipelines/prism/vpdmax_download.yml
+  - pipelines/yanroy/polygons.yml
 
 vars:
   dataset_id: stage.prism_vpdmax_field_year_v1
   name: prism_vpdmax_field_aggregate
-  # Start from YanRoy states->tiles outputs.
-  # TODO: if tiles.of.interest.csv path differs by environment, override this var.
-  tiles_csv: "{env.basedir}/data/yanroy/meta/tiles.of.interest.csv"
   prism_dir: "{env.basedir}/data/prism/vpdmax/monthly/raw"
-  months: "7,8"
-  year_start: 2005
-  year_end: 2025
+  yanroy_polygons_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
+  raster_glob: "{prism_dir}/**/*vpdmax*20????*.tif"
+  year_month_regex: "(20\\d{2}(0[1-9]|1[0-2]))"
+  per_raster_outdir: "{workdir}/by_raster"
+  combined_monthly_csv: "{workdir}/vpdmax_tile_field_monthly.csv"
+  output_csv: "{workdir}/vpdmax_field_year.csv"
+  summary_json: "{workdir}/vpdmax_field_year.summary.json"
+  value_prefix: vpdmax
+  aggregations: "mean,max"
+  tile_field_id_field: tile_field_id
 
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
-  outdir: "{workdir}/field_vpdmax"
 
 steps:
-  - name: "{sys.step.NN}_plan_vpdmax_field_tasks"
-    plugin: exec_script.py
+  - name: "{sys.step.NN}_aggregate_each_vpdmax_raster"
+    plugin: geo/geo_county_raster_aggregate
     args:
-      script: "scripts/prism/plan_vpdmax_field_aggregation.py"
-      script_args: "--prism-dir \"{prism_dir}\" --tiles-csv \"{tiles_csv}\" --output-dir \"{outdir}\" --months \"{months}\" --year-start {year_start} --year-end {year_end} --verbose"
+      raster_path: "{item}"
+      county_path: "{yanroy_polygons_path}"
+      output_path: "{per_raster_outdir}/{item_stem}.csv"
+      county_id_field: "{tile_field_id_field}"
+      aggregations: "{aggregations}"
+      value_prefix: "{value_prefix}"
+      day_from_filename_regex: "{year_month_regex}"
+      day_from_filename_group: 1
       verbose: true
-    output_var: plan
+    foreach_glob: "{raster_glob}"
+    foreach_kind: files
+    output_var: raster_stats
 
-  - name: "{sys.step.NN}_next_step_todo"
-    plugin: echo.py
+  - name: "{sys.step.NN}_combine_vpdmax_monthly_stats"
+    plugin: combine_files
     args:
-      message: "Scaffold only: implement raster->field aggregation step next (vpdmax_7/vpdmax_8 by tile_field_ID,year)."
+      input_glob: "{per_raster_outdir}/*.csv"
+      output_file: "{combined_monthly_csv}"
+      format: csv
+      verbose: true
+    output_var: combined_stats
 
-
+  - name: "{sys.step.NN}_normalize_vpdmax_field_year"
+    plugin: exec_script
+    args:
+      script: scripts/prism/normalize_vpdmax_field_year.py
+      script_args: "--input-csv \"{combined_monthly_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
+      verbose: true
+    output_var: vpdmax_field_year

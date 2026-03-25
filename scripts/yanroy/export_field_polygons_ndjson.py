@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-_TILE_RE = re.compile(r"(?i)\b(h\d{2}v\d{2})\b")
+_TILE_RE = re.compile(r"(?i)(h\d{2}v\d{2})")
 
 
 def _to_scalar(value: Any):

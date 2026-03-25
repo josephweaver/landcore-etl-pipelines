@@ -24,7 +24,7 @@ _IGNORED_SUFFIXES = {
 
 
 _TILE_ID_RE = re.compile(r"(?i)^h\d{2}v\d{2}$")
-_TILE_ID_FIND_RE = re.compile(r"(?i)\b(h\d{2}v\d{2})\b")
+_TILE_ID_FIND_RE = re.compile(r"(?i)(h\d{2}v\d{2})")
 
 
 def _normalize_tile_id(value: str) -> str:
