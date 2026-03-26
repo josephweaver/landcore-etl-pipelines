@@ -83,4 +83,6 @@ steps:
       script: scripts/model/normalize_lobell_corn_field_year.py
       script_args: "--input-csv \"{combined_raw_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
       verbose: true
+    resources:
+      mem: "16G"
     output_var: lobell_corn_field_year
