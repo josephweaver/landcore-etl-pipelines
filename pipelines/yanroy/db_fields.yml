@@ -41,7 +41,7 @@ steps:
   - name: "{sys.step.NN}_build_db_field_tables"
     plugin: exec_script
     args:
-      script: "scripts/yanroy/build_db_fields.py"
+      script: "{sys.projectdir}/scripts/yanroy/build_db_fields.py"
       script_args: "--input-vector \"{polygon_combined_path}\" --field-csv \"{field_csv}\" --field-parquet \"{field_parquet}\" --field-boundary-csv \"{field_boundary_csv}\" --field-boundary-parquet \"{field_boundary_parquet}\" --field-boundary-gpkg \"{field_boundary_gpkg}\" --summary-json \"{summary_json}\" --source \"{source}\" --resolution \"{resolution}\" --valid-start \"{valid_start}\" --valid-end \"{valid_end}\" --field-id-field field_id --tile-field tile_id --source-name-field source_name --verbose"
       verbose: true
     resources:
@@ -55,7 +55,7 @@ steps:
       path: "{field_parquet}"
       stage: "published"
       location_alias: "LC_GCS"
-      locations_config: "config/data_locations.yml"
+      locations_config: "{sys.appdir}/config/data_locations.yml"
       workspace_auto_register: false
     output_var: field_store
 
@@ -66,7 +66,7 @@ steps:
       path: "{field_boundary_parquet}"
       stage: "published"
       location_alias: "LC_GCS"
-      locations_config: "config/data_locations.yml"
+      locations_config: "{sys.appdir}/config/data_locations.yml"
       workspace_auto_register: false
     output_var: field_boundary_store
 
@@ -74,7 +74,7 @@ steps:
     plugin: source_control_checkout
     args:
       repo_alias: "LC_DUCKDB"
-      config_path: "config/source_control.yml"
+      config_path: "{sys.appdir}/config/source_control.yml"
       local_path: "{duckdb_repo_path}"
       branch: "main"
       create_branch: false
@@ -84,7 +84,7 @@ steps:
   - name: "{sys.step.NN}_write_duckdb_fields_bundle"
     plugin: exec_script
     args:
-      script: "scripts/duckdb/write_parquet_view_bundle.py"
+      script: "{sys.projectdir}/scripts/duckdb/write_parquet_view_bundle.py"
       script_args: "--table-name yanroy_fields --dataset-id \"{field_dataset_id}\" --source-uri \"{field_store.target_uri}\" --yaml-path \"{duckdb_fields_yaml}\" --sql-path \"{duckdb_fields_sql}\" --summary-json \"{duckdb_fields_summary}\""
       verbose: true
     output_var: duckdb_fields_bundle
@@ -92,7 +92,7 @@ steps:
   - name: "{sys.step.NN}_write_duckdb_field_boundaries_bundle"
     plugin: exec_script
     args:
-      script: "scripts/duckdb/write_parquet_view_bundle.py"
+      script: "{sys.projectdir}/scripts/duckdb/write_parquet_view_bundle.py"
       script_args: "--table-name yanroy_field_boundaries --dataset-id \"{field_boundary_dataset_id}\" --source-uri \"{field_boundary_store.target_uri}\" --yaml-path \"{duckdb_boundaries_yaml}\" --sql-path \"{duckdb_boundaries_sql}\" --summary-json \"{duckdb_boundaries_summary}\""
       verbose: true
     output_var: duckdb_boundaries_bundle
@@ -111,7 +111,7 @@ steps:
     plugin: source_control_checkin
     args:
       repo_alias: "LC_DUCKDB"
-      config_path: "config/source_control.yml"
+      config_path: "{sys.appdir}/config/source_control.yml"
       local_path: "{duckdb_repo_path}"
       paths_json: "[\"{duckdb_fields_yaml}\",\"{duckdb_fields_sql}\",\"{duckdb_boundaries_yaml}\",\"{duckdb_boundaries_sql}\"]"
       commit_message: "Update YanRoy DuckDB tables"
