@@ -14,6 +14,7 @@ vars:
   logdir: "{workdir}/logs"
   yanroy_dir: "{env.basedir}/data/yanroy"
   db_dir: "{yanroy_dir}/db"
+  scdir: "{env.basedir}/source_control"
   polygon_combined_path: "{yanroy_dir}/polygons/field_polygons.gpkg"
   field_csv: "{db_dir}/field.csv"
   field_parquet: "{db_dir}/field.parquet"
@@ -21,7 +22,7 @@ vars:
   field_boundary_parquet: "{db_dir}/field_boundary.parquet"
   field_boundary_gpkg: "{db_dir}/field_boundary.gpkg"
   summary_json: "{db_dir}/field_boundary.summary.json"
-  duckdb_repo_path: "../landcore-duckdb"
+  duckdb_repo_path: "{scdir}/landcore-duckdb"
   duckdb_workspace: "{duckdb_repo_path}/workspace.yml"
   duckdb_validation_db: "{workdir}/yanroy_catalog_validation.duckdb"
   duckdb_fields_yaml: "{duckdb_repo_path}/tables/yanroy/fields.yml"
@@ -74,6 +75,7 @@ steps:
     args:
       repo_alias: "LC_DUCKDB"
       config_path: "config/source_control.yml"
+      local_path: "{duckdb_repo_path}"
       branch: "main"
       create_branch: false
       set_remote_url: false
@@ -110,6 +112,7 @@ steps:
     args:
       repo_alias: "LC_DUCKDB"
       config_path: "config/source_control.yml"
+      local_path: "{duckdb_repo_path}"
       paths_json: "[\"{duckdb_fields_yaml}\",\"{duckdb_fields_sql}\",\"{duckdb_boundaries_yaml}\",\"{duckdb_boundaries_sql}\"]"
       commit_message: "Update YanRoy DuckDB tables"
       push: true
