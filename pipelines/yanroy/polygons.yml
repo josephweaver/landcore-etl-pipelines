@@ -12,7 +12,9 @@ vars:
   metadir: "{yanroy_dir}/meta"
   polygon_dir: "{yanroy_dir}/polygons"
   polygon_glob: "{polygon_dir}/WELD_*_2010_field_segments.gpkg"
+  polygon_combined_raw_path: "{polygon_dir}/field_polygons.raw.gpkg"
   polygon_combined_path: "{polygon_dir}/field_polygons.gpkg"
+  polygon_combined_summary_json: "{workdir}/field_polygons.summary.json"
   filtered_states_5070_path: "{metadir}/states.of.interest.5070.gpkg"
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
@@ -37,7 +39,7 @@ steps:
     plugin: geo/geo_vector_combine
     args:
       input_glob: "{polygon_glob}"
-      output_path: "{polygon_combined_path}"
+      output_path: "{polygon_combined_raw_path}"
       target_crs: "{target_crs}"
       include_source_name: true
       source_name_field: source_name
@@ -45,3 +47,10 @@ steps:
       allow_empty: false
       verbose: true
     output_var: field_polygons_combined
+  - name: "{sys.step.NN}_normalize_field_polygon_keys"
+    plugin: exec_script
+    args:
+      script: "scripts/yanroy/normalize_field_polygons.py"
+      script_args: "--input-vector \"{polygon_combined_raw_path}\" --output-vector \"{polygon_combined_path}\" --summary-json \"{polygon_combined_summary_json}\" --source-name-field source_name --field-id-field field_id --tile-id-field tile_id --tile-field-id-field tile_field_id --tile-coord-field tile_coord --overwrite --verbose"
+      verbose: true
+    output_var: field_polygons_normalized
