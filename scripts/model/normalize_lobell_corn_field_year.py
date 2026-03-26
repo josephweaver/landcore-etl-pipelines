@@ -5,6 +5,10 @@ import argparse
 import csv
 import json
 from pathlib import Path
+import re
+
+
+TILE_RE = re.compile(r"(?i)(h\d{2}v\d{2})")
 
 
 def _resolve(path_text: str) -> Path:
@@ -17,6 +21,15 @@ def _split_tile_field_id(value: str) -> tuple[str, str]:
         return "", ""
     left, right = text.split("_", 1)
     return left, right
+
+
+def _derive_tile_coord(row: dict[str, str]) -> str:
+    for key in ["county_name", "raster_path"]:
+        text = str(row.get(key) or "").strip()
+        match = TILE_RE.search(text)
+        if match:
+            return match.group(1).lower()
+    return ""
 
 
 def main() -> int:
@@ -40,12 +53,17 @@ def main() -> int:
 
     normalized_rows: list[dict[str, str]] = []
     for row in rows:
-        tile_field_id = str(row.get("county_id") or "").strip()
+        county_id = str(row.get("county_id") or "").strip()
         year = str(row.get("day") or "").strip()
         unscaled_yield = str(row.get("unscaled_yield_mean") or "").strip()
         pixel_count = str(row.get("unscaled_yield_count") or "").strip()
-        if not tile_field_id or not year or not unscaled_yield:
+        if not county_id or not year or not unscaled_yield:
             continue
+        tile_field_id = county_id
+        if "_" not in tile_field_id:
+            tile_coord = _derive_tile_coord(row)
+            if tile_coord:
+                tile_field_id = f"{tile_coord}_{county_id}"
         tile_coord, field_id = _split_tile_field_id(tile_field_id)
         normalized_rows.append(
             {

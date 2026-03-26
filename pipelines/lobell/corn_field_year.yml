@@ -9,6 +9,8 @@ vars:
   name: lobell_corn_field_year
   lobell_raw_dir: "{env.basedir}/data/lobell/corn/raw"
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
+  yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
+  tiles: "{project.tiles_of_interest}"
   years:
     - 1999
     - 2000
@@ -32,12 +34,12 @@ vars:
     - 2018
     - 2019
     - 2020
+  tile_years: "{expr.product(tiles, years)}"
   per_year_raster_dir: "{workdir}/by_year_raster"
-  per_year_csv_dir: "{workdir}/by_year_csv"
+  per_tile_year_csv_dir: "{workdir}/by_tile_year_csv"
   combined_raw_csv: "{workdir}/lobell_corn_yanroy_field_year.raw.csv"
   output_csv: "{workdir}/lobell_corn_yanroy_field_year.csv"
   summary_json: "{workdir}/lobell_corn_yanroy_field_year.summary.json"
-  year_parallelism: 4
 
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
@@ -53,30 +55,28 @@ steps:
       verbose: true
     foreach: years
     resources:
-      foreach_max_concurrency: "{year_parallelism}"
       mem: "24G"
     output_var: combined_corn_year
 
-  - name: "{sys.step.NN}_aggregate_corn_fields_by_year"
+  - name: "{sys.step.NN}_aggregate_corn_fields_by_tile_year"
     plugin: geo/geo_county_raster_aggregate
     args:
-      raster_path: "{per_year_raster_dir}/corn_yield_{item}.tif"
-      county_path: "{yanroy_polygon_path}"
-      output_path: "{per_year_csv_dir}/corn_yield_{item}.csv"
-      county_id_field: "tile_field_id"
+      raster_path: "{per_year_raster_dir}/corn_yield_{item.1}.tif"
+      county_path: "{yanroy_polygon_dir}/WELD_{item.0}_2010_field_segments.gpkg"
+      output_path: "{per_tile_year_csv_dir}/corn_yield_{item.0}_{item.1}.csv"
+      county_id_field: "field_id"
+      county_name_field: "source_name"
       aggregations: "mean,count"
       value_prefix: "unscaled_yield"
-      day: "{item}"
+      day: "{item.1}"
       verbose: true
-    foreach: years
-    resources:
-      foreach_max_concurrency: "{year_parallelism}"
+    foreach: tile_years
     output_var: aggregated_corn_year
 
   - name: "{sys.step.NN}_combine_corn_field_year_csvs"
     plugin: combine_files
     args:
-      input_glob: "{per_year_csv_dir}/*.csv"
+      input_glob: "{per_tile_year_csv_dir}/*.csv"
       output_file: "{combined_raw_csv}"
       format: csv
       verbose: true
