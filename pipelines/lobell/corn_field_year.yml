@@ -62,6 +62,7 @@ steps:
       county_name_field: "source_name"
       aggregations: "mean,count"
       value_prefix: "unscaled_yield"
+      include_empty_polygons: false
       day: "{item.1}"
       verbose: true
     foreach: tile_years
