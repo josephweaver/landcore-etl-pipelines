@@ -6,9 +6,11 @@ import csv
 import json
 from collections import defaultdict
 from pathlib import Path
+import re
 
 
 TARGET_MONTHS = (7, 8)
+TILE_RE = re.compile(r"(?i)(h\d{2}v\d{2})")
 
 
 def _resolve(path_text: str) -> Path:
@@ -21,6 +23,16 @@ def _split_tile_field_id(value: str) -> tuple[str, str]:
         return "", ""
     left, right = text.split("_", 1)
     return left, right
+
+
+def _tile_from_source_name(value: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    match = TILE_RE.search(text)
+    if not match:
+        return ""
+    return str(match.group(1) or "").lower()
 
 
 def _parse_year_month(value: str) -> tuple[str, str]:
@@ -63,6 +75,10 @@ def main() -> int:
 
     for row in rows:
         tile_field_id = str(row.get("county_id") or "").strip()
+        if tile_field_id and "_" not in tile_field_id:
+            tile_coord = _tile_from_source_name(str(row.get("county_name") or ""))
+            if tile_coord:
+                tile_field_id = f"{tile_coord}_{tile_field_id}"
         year, month = _parse_year_month(str(row.get("day") or ""))
         value = _pick_value(row)
         if not tile_field_id or not year or not month or not value:
