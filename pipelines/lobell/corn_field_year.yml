@@ -10,24 +10,20 @@ vars:
   lobell_raw_dir: "{env.basedir}/data/lobell/corn/raw"
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
   yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
-  tiles: "{project.tiles_of_interest}"
+  tiles:
+    - "h18v05"
   years:
+    # - 2000
+    # - 2001
+    # - 2002
+    # - 2003
+    # - 2004
     # - 2005
     # - 2006
     # - 2007
     # - 2008
     # - 2009
-    - 2010
-    - 2011
-    - 2012
-    - 2013
-    - 2014
-    - 2015
     - 2016
-    - 2017
-    - 2018
-    - 2019
-    - 2020
   tile_years: "{expr.product(tiles, years)}"
   per_year_raster_dir: "{workdir}/by_year_raster"
   per_tile_year_csv_dir: "{workdir}/by_tile_year_csv"
@@ -53,17 +49,28 @@ steps:
     output_var: combined_corn_year
 
   - name: "{sys.step.NN}_aggregate_corn_fields_by_tile_year"
-    plugin: geo/geo_county_raster_aggregate
+    plugin: geo/raster_aggregate_by_polygon
     args:
       raster_path: "{per_year_raster_dir}/corn_yield_{item.1}.tif"
-      county_path: "{yanroy_polygon_dir}/WELD_{item.0}_2010_field_segments.gpkg"
+      polygon_path: "{yanroy_polygon_dir}/WELD_{item.0}_2010_field_segments.gpkg"
       output_path: "{per_tile_year_csv_dir}/corn_yield_{item.0}_{item.1}.csv"
-      county_id_field: "field_id"
-      county_name_field: "source_name"
+      polygon_id_field: field_id
       aggregations: "mean,count"
-      value_prefix: "unscaled_yield"
+      columns:
+        - source: polygon.field_id
+          name: field_id
+          type: int
+        - source: literal
+          value: "{item.1}"
+          name: year
+          type: int
+        - source: raster.mean
+          name: corn_yield_mean
+          type: double
+        - source: raster.count
+          name: pixel_count
+          type: int
       include_empty_polygons: false
-      day: "{item.1}"
       verbose: true
     foreach: tile_years
     output_var: aggregated_corn_year
@@ -83,5 +90,4 @@ steps:
       script: scripts/model/normalize_lobell_corn_field_year.py
       script_args: "--input-csv \"{combined_raw_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
       verbose: true
-
     output_var: lobell_corn_field_year

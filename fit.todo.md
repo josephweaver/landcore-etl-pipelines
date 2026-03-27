@@ -97,7 +97,7 @@ Guiding rule for this plan:
      - `pipelines/lobell/corn_field_year.yml`
      - plugin-first year fanout using:
        - `geo_raster_combine`
-       - `geo_county_raster_aggregate`
+       - `raster_aggregate_by_polygon`
 
 3. `pipelines/lobell/tillage_field_year.yml`
    - dataset: `stage.lobell_tillage_field_year_v1`

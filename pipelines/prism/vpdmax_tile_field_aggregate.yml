@@ -24,12 +24,12 @@ vars:
 
 steps:
   - name: "{sys.step.NN}_aggregate_each_vpdmax_raster"
-    plugin: geo/geo_county_raster_aggregate
+    plugin: geo/raster_aggregate_by_polygon
     args:
       raster_path: "{item}"
-      county_path: "{yanroy_polygons_path}"
+      polygon_path: "{yanroy_polygons_path}"
       output_path: "{per_raster_outdir}/{item_stem}.csv"
-      county_id_field: "{tile_field_id_field}"
+      polygon_id_field: "{tile_field_id_field}"
       aggregations: "{aggregations}"
       value_prefix: "{value_prefix}"
       day_from_filename_regex: "{year_month_regex}"

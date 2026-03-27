@@ -24,11 +24,19 @@ def _split_tile_field_id(value: str) -> tuple[str, str]:
 
 
 def _derive_tile_coord(row: dict[str, str]) -> str:
-    for key in ["county_name", "raster_path"]:
+    for key in ["polygon_name", "county_name", "raster_path"]:
         text = str(row.get(key) or "").strip()
         match = TILE_RE.search(text)
         if match:
             return match.group(1).lower()
+    return ""
+
+
+def _pick(row: dict[str, str], *keys: str) -> str:
+    for key in keys:
+        value = str(row.get(key) or "").strip()
+        if value:
+            return value
     return ""
 
 
@@ -53,17 +61,17 @@ def main() -> int:
 
     normalized_rows: list[dict[str, str]] = []
     for row in rows:
-        county_id = str(row.get("county_id") or "").strip()
-        year = str(row.get("day") or "").strip()
-        unscaled_yield = str(row.get("unscaled_yield_mean") or "").strip()
-        pixel_count = str(row.get("unscaled_yield_count") or "").strip()
-        if not county_id or not year or not unscaled_yield:
+        polygon_id = _pick(row, "tile_field_id", "polygon_id", "county_id")
+        year = _pick(row, "day", "year")
+        unscaled_yield = _pick(row, "unscaled_yield_mean", "corn_yield_mean", "mean")
+        pixel_count = _pick(row, "unscaled_yield_count", "pixel_count", "count")
+        if not polygon_id or not year or not unscaled_yield:
             continue
-        tile_field_id = county_id
+        tile_field_id = polygon_id
         if "_" not in tile_field_id:
             tile_coord = _derive_tile_coord(row)
             if tile_coord:
-                tile_field_id = f"{tile_coord}_{county_id}"
+                tile_field_id = f"{tile_coord}_{polygon_id}"
         tile_coord, field_id = _split_tile_field_id(tile_field_id)
         normalized_rows.append(
             {
@@ -73,7 +81,7 @@ def main() -> int:
                 "year": year,
                 "unscaled_yield": unscaled_yield,
                 "pixel_count": pixel_count,
-                "raster_path": str(row.get("raster_path") or "").strip(),
+                "raster_path": _pick(row, "raster_path"),
             }
         )
 
