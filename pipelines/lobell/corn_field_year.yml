@@ -10,8 +10,7 @@ vars:
   lobell_raw_dir: "{env.basedir}/data/lobell/corn/raw"
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
   yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
-  tiles:
-    - "h18v05"
+  tiles: "{project.tiles_of_interest}"
   years:
     # - 2000
     # - 2001
@@ -23,7 +22,17 @@ vars:
     # - 2007
     # - 2008
     # - 2009
+    # - 2010
+    - 2011
+    - 2012
+    - 2013
+    - 2014
+    - 2015
     - 2016
+    - 2017
+    - 2018
+    - 2019
+    - 2020
   tile_years: "{expr.product(tiles, years)}"
   per_year_raster_dir: "{workdir}/by_year_raster"
   per_tile_year_csv_dir: "{workdir}/by_tile_year_csv"
@@ -67,6 +76,7 @@ steps:
         - source: raster.mean
           name: corn_yield_mean
           type: double
+          format: ".2f"
         - source: raster.count
           name: pixel_count
           type: int
