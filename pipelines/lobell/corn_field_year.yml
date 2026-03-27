@@ -75,8 +75,6 @@ steps:
       output_file: "{combined_raw_csv}"
       format: csv
       verbose: true
-    resources:
-      mem: "16G"
     output_var: combined_corn_field_year
 
   - name: "{sys.step.NN}_normalize_corn_field_year"
@@ -85,4 +83,5 @@ steps:
       script: scripts/model/normalize_lobell_corn_field_year.py
       script_args: "--input-csv \"{combined_raw_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
       verbose: true
+
     output_var: lobell_corn_field_year
