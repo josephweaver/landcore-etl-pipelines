@@ -63,11 +63,14 @@ steps:
       raster_path: "{per_year_raster_dir}/corn_yield_{item.1}.tif"
       polygon_path: "{yanroy_polygon_dir}/WELD_{item.0}_2010_field_segments.gpkg"
       output_path: "{per_tile_year_csv_dir}/corn_yield_{item.0}_{item.1}.csv"
-      polygon_id_field: tile_field_id
+      polygon_id_field: field_id
       aggregations: "mean,count"
       columns:
-        - source: polygon.tile_field_id
-          name: tile_field_id
+        - source: literal
+          value: "{item.0}"
+          type: str
+        - source: polygon.field_id
+          name: field_id
           type: int
         - source: literal
           value: "{item.1}"
