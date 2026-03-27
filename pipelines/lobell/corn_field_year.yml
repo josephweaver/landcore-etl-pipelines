@@ -67,6 +67,7 @@ steps:
       aggregations: "mean,count"
       columns:
         - source: literal
+          name: tile_coord
           value: "{item.0}"
           type: str
         - source: polygon.field_id
