@@ -7,7 +7,8 @@ requires_pipelines:
 vars:
   dataset_id: stage.lobell_tillage_field_year_v1
   name: lobell_tillage_field_year
-  lobell_raw_dir: "{env.basedir}/data/lobell/tillage/raw"
+  lobell_dir: "{env.basedir}/data/lobell/tillage"
+  lobell_raw_dir: "{lobell_dir}/raw"
   yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
   tiles: "{project.tiles_of_interest}"
   years:
@@ -24,11 +25,11 @@ vars:
     - 2015
     - 2016
   tile_years: "{expr.product(tiles, years)}"
-  per_year_raster_dir: "{workdir}/by_year_raster"
-  per_tile_year_csv_dir: "{workdir}/by_tile_year_csv"
-  combined_raw_csv: "{workdir}/lobell_tillage_field_year.raw.csv"
-  output_csv: "{workdir}/lobell_tillage_field_year.csv"
-  summary_json: "{workdir}/lobell_tillage_field_year.summary.json"
+  per_year_raster_dir: "{lobell_dir}/by_year_raster"
+  per_tile_year_csv_dir: "{lobell_dir}/by_tile_year_csv"
+  combined_raw_csv: "{lobell_dir}/lobell_tillage_field_year.raw.csv"
+  output_csv: "{lobell_dir}/lobell_tillage_field_year.csv"
+  summary_json: "{lobell_dir}/lobell_tillage_field_year.summary.json"
 
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
