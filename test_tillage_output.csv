@@ -1,0 +1,2 @@
+tile_coord,field_ID,tile_field_ID,year,dominant_tillage,tillage_0_count,tillage_1_count,tillage_na_count,tillage_0_prop,tillage_1_prop,tillage_na_prop,pixel_count,raster_path
+h18v05,123,h18v05_123,2016,0,2,1,1,0.5,0.25,0.25,4,

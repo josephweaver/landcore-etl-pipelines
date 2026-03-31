@@ -1,0 +1,6 @@
+{
+  "input_csv": "C:/Joe Local Only/College/Research/landcore-etl-pipelines/test_tillage_input.csv",
+  "output_csv": "C:/Joe Local Only/College/Research/landcore-etl-pipelines/test_tillage_output.csv",
+  "row_count": 1,
+  "duplicate_tile_field_year_rows": 0
+}
