@@ -13,5 +13,7 @@ This repository contains LandCore-specific ETL pipelines and scripts.
 - Lobell corn yield pipelines are complete for both:
   - raw download staging
   - `tile_field_ID` + `year` field-year output construction
-- Lobell tillage download pipeline is working for raw staging from the shared LandCore Google Drive.
-- Current next step is Lobell tillage field-year construction from the raw rasters.
+- Lobell tillage pipelines are complete for both:
+  - raw download staging
+  - `tile_field_ID` + `year` field-year output construction with tillage counts and proportions
+- Current next step is using the staged Lobell tillage field-year output in downstream model-input assembly.
