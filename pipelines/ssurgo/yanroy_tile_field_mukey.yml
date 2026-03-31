@@ -1,6 +1,7 @@
 project_id: land_core
 requires_pipelines:
   - pipelines/yanroy/filtered_rasters.yml
+  - pipelines/ssurgo/conus_mukey_grid_download.yml
 vars:
   dataset_id: stage.ssurgo_tile_field_mukey_v1
   name: ssurgo_yanroy_tile_field_mukey
@@ -74,15 +75,15 @@ steps:
       format: csv
       verbose: true
     output_var: tile_field_mukey_long_combined
-  - name: "{sys.step.NN}_load_tile_field_mukey_duckdb"
-    plugin: duckdb_load
-    args:
-      db_path: "{project.duckdb_path}"
-      table: "{duckdb_table_tile_field_mukey}"
-      source: "{tile_field_mukey_csv}"
-      format: csv
-      mode: "{duckdb_load_mode}"
-      csv_header: true
-      analyze: true
-      verbose: true
-    output_var: tile_field_mukey_duckdb
+  # - name: "{sys.step.NN}_load_tile_field_mukey_duckdb"
+  #   plugin: duckdb_load
+  #   args:
+  #     db_path: "{project.duckdb_path}"
+  #     table: "{duckdb_table_tile_field_mukey}"
+  #     source: "{tile_field_mukey_csv}"
+  #     format: csv
+  #     mode: "{duckdb_load_mode}"
+  #     csv_header: true
+  #     analyze: true
+  #     verbose: true
+  #   output_var: tile_field_mukey_duckdb
