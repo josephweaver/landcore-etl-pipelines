@@ -1,0 +1,27 @@
+project_id: land_core
+
+vars:
+  dataset_id: raw.lobell_tillage_rasters_v1
+  name: lobell_tillage_download
+  gdrive_remote: gdrive
+  gdrive_src: Data/Tillage/Tillage_Data
+  gdrive_glob: "*.tif"
+  lobell_dir: "{env.basedir}/data/lobell/tillage"
+  rawdir: "{lobell_dir}/raw"
+
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+
+steps:
+  - name: "{sys.step.NN}_download_lobell_tillage_rasters"
+    plugin: gdrive_download
+    args:
+      remote: "{gdrive_remote}"
+      src: "{gdrive_src}"
+      glob: "{gdrive_glob}"
+      out: "{rawdir}"
+      recursive: true
+      no_clobber: true
+      verbose: true
+    output_var: staged_raw
