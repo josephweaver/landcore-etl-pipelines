@@ -16,21 +16,28 @@ This repository contains LandCore-specific ETL pipelines and scripts.
 - Lobell tillage pipelines are complete for both:
   - raw download staging
   - `tile_field_ID` + `year` field-year output construction with tillage counts and proportions
-- SSURGO MUKEY staging is complete for:
-  - CONUS MUKEY raster download
-  - YanRoy `tile_field_id <-> mukey` relationship construction
-  - weighted field-level overlap metrics (`pct_overlap`, `overlap_area`)
-- The current SSURGO blocker is NCCPI extraction:
-  - the local `gSSURGO_CONUS.gdb` contains `Valu1` metadata
-  - but the current HPCC environment only exposes the `OpenFileGDB` driver
-  - `OpenFileGDB` does not currently expose `Valu1` rows for direct extraction
-  - the SDA path is also blocked because the SDA endpoint rejects `FROM valu1`
-- Current next step is obtaining a local flat extract of `Valu1` with:
-  - `mukey`
-  - `nccpi3all`
-  - `nccpi3corn`
-  - `nccpi3soy`
-- Once `Valu1` is staged locally, the next downstream step is using:
+- SSURGO progress:
+  - CONUS MUKEY raster download is complete
+  - YanRoy `tile_field_id <-> mukey` relationship construction is complete
+  - output contract for `tile_field2mukey.csv` is:
+    - `tile_field_id`
+    - `mukey`
+    - `pct_overlap`
+    - `overlap_area`
+  - state-level gSSURGO download pipeline is now active for:
+    - `IA`, `IL`, `IN`, `MI`, `MN`, `MO`, `OH`, `SD`, `WI`
+  - state-level `Valu1` NCCPI extraction pipeline now exists and targets:
+    - `mukey`
+    - `nccpi3all`
+    - `nccpi3corn`
+    - `nccpi3soy`
+- SSURGO implementation notes:
+  - the older SDA approach is deprecated because the SDA endpoint rejects `FROM valu1`
+  - the CONUS `gSSURGO_CONUS.gdb` path is not sufficient in the current HPCC environment because `OpenFileGDB` does not expose `Valu1` rows directly
+  - the current active path is the state-level gSSURGO workflow plus per-state `Valu1` extraction
+  - the state-level NCCPI extraction pipeline is currently in active runtime validation/debugging on HPCC
+- Current next SSURGO step is to finish validating `state_valu1_nccpi_extract.yml`, then use the extracted MUKEY-level NCCPI table to build weighted field-level NCCPI by `tile_field_id`.
+- Once SSURGO weighted NCCPI is complete, the next downstream step is using:
   - Lobell corn field-year
   - Lobell tillage field-year
   - SSURGO weighted NCCPI by `tile_field_id`
