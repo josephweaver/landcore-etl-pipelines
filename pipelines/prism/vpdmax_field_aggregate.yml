@@ -9,14 +9,15 @@ requires_pipelines:
 vars:
   dataset_id: stage.prism_vpdmax_field_year_v1
   name: prism_vpdmax_field_aggregate
+  outdir: "{env.basedir}/data/prism/vpdmax"
   prism_dir: "{env.basedir}/data/prism/vpdmax/monthly/raw"
   yanroy_polygons_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
   raster_glob: "{prism_dir}/**/*vpdmax*20????*.tif"
   year_month_regex: "(20\\d{2}(0[1-9]|1[0-2]))"
   per_raster_outdir: "{workdir}/by_raster"
   combined_monthly_csv: "{workdir}/vpdmax_tile_field_monthly.csv"
-  output_csv: "{workdir}/vpdmax_field_year.csv"
-  summary_json: "{workdir}/vpdmax_field_year.summary.json"
+  output_csv: "{outdir}/vpdmax_field_year.csv"
+  summary_json: "{outdir}/vpdmax_field_year.summary.json"
   value_prefix: vpdmax
   aggregations: "mean,max"
   tile_field_id_field: tile_field_id

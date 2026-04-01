@@ -1,0 +1,30 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/lobell/corn_field_year.yml
+  - pipelines/lobell/tillage_field_year.yml
+  - pipelines/prism/vpdmax_field_aggregate.yml
+  - pipelines/ssurgo/yanroy_tile_field_nccpi.yml
+  - pipelines/yanroy/field_fips.yml
+
+vars:
+  dataset_id: model_in.tillage_covariates_v1
+  name: tillage_covariates_model_input
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  outdir: "{env.basedir}/data/risk_model/model_input"
+  corn_csv: "{env.basedir}/data/lobell/corn/lobell_corn_yanroy_field_year.csv"
+  tillage_csv: "{env.basedir}/data/lobell/tillage/lobell_tillage_field_year.csv"
+  vpdmax_csv: "{env.basedir}/data/prism/vpdmax/vpdmax_field_year.csv"
+  nccpi_csv: "{env.basedir}/data/ssurgo/yanroy_nccpi/tile_field_nccpi_weighted.csv"
+  field_fips_csv: "{env.basedir}/data/yanroy/field_fips/yanroy_tile_field_fips.csv"
+  output_csv: "{outdir}/tillage_covariates_v1.csv"
+  summary_json: "{outdir}/tillage_covariates_v1.summary.json"
+
+steps:
+  - name: "{sys.step.NN}_build_tillage_model_input"
+    plugin: exec_script
+    args:
+      script: scripts/model/build_tillage_model_input.py
+      script_args: "--corn-csv \"{corn_csv}\" --tillage-csv \"{tillage_csv}\" --vpdmax-csv \"{vpdmax_csv}\" --nccpi-csv \"{nccpi_csv}\" --field-fips-csv \"{field_fips_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\" --verbose"
+      verbose: true
+    output_var: tillage_model_input

@@ -7,6 +7,7 @@ requires_pipelines:
 vars:
   dataset_id: stage.lobell_corn_yanroy_field_year_v1
   name: lobell_corn_field_year
+  lobell_dir: "{env.basedir}/data/lobell/corn"
   lobell_raw_dir: "{env.basedir}/data/lobell/corn/raw"
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
   yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
@@ -37,8 +38,8 @@ vars:
   per_year_raster_dir: "{workdir}/by_year_raster"
   per_tile_year_csv_dir: "{workdir}/by_tile_year_csv"
   combined_raw_csv: "{workdir}/lobell_corn_yanroy_field_year.raw.csv"
-  output_csv: "{workdir}/lobell_corn_yanroy_field_year.csv"
-  summary_json: "{workdir}/lobell_corn_yanroy_field_year.summary.json"
+  output_csv: "{lobell_dir}/lobell_corn_yanroy_field_year.csv"
+  summary_json: "{lobell_dir}/lobell_corn_yanroy_field_year.summary.json"
 
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
