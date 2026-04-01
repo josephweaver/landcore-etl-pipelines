@@ -29,6 +29,31 @@ def _to_text(value: Any) -> str:
     return str(value)
 
 
+def _normalize_id_text(value: Any) -> str:
+    text = _to_text(value).strip()
+    if not text:
+        return ""
+    try:
+        fv = float(text)
+        if fv.is_integer():
+            return str(int(fv))
+    except Exception:
+        pass
+    return text
+
+
+def _normalize_tile_field_id_text(value: Any) -> str:
+    text = _to_text(value).strip()
+    if not text:
+        return ""
+    if "_" not in text:
+        return _normalize_id_text(text)
+    left, right = text.split("_", 1)
+    left = left.strip().lower()
+    right = _normalize_id_text(right)
+    return f"{left}_{right}" if left and right else text
+
+
 def _vlog(verbose: bool, message: str) -> None:
     if verbose:
         print(f"[build_tile_field_mukey_map] {message}")
@@ -77,7 +102,7 @@ def _derive_field_id_column(fields, field_id_field: str, verbose: bool):
         if has_field_id and has_tile_id:
             fields = fields.copy()
             fields[field_id_field] = (
-                fields["tile_id"].map(_to_text).str.lower().str.strip() + "_" + fields["field_id"].map(_to_text).str.strip()
+                fields["tile_id"].map(_to_text).str.lower().str.strip() + "_" + fields["field_id"].map(_normalize_id_text).str.strip()
             )
             if verbose:
                 _vlog(verbose, "derived tile_field_id from tile_id + field_id")
@@ -86,7 +111,7 @@ def _derive_field_id_column(fields, field_id_field: str, verbose: bool):
             fields = fields.copy()
             fields["tile_id"] = fields["source_name"].map(_derive_tile_from_text)
             fields[field_id_field] = (
-                fields["tile_id"].map(_to_text).str.lower().str.strip() + "_" + fields["field_id"].map(_to_text).str.strip()
+                fields["tile_id"].map(_to_text).str.lower().str.strip() + "_" + fields["field_id"].map(_normalize_id_text).str.strip()
             )
             if verbose:
                 _vlog(verbose, "derived tile_field_id from source_name + field_id")
@@ -229,7 +254,7 @@ def _load_fields_for_tile(
             miss = fields["tile"].astype(str).str.len() == 0
             fields.loc[miss, "tile"] = fields.loc[miss, "source_name"].map(_derive_tile_from_text)
 
-    fields[field_id_field] = fields[field_id_field].map(_to_text)
+    fields[field_id_field] = fields[field_id_field].map(_normalize_tile_field_id_text)
     fields = fields[fields[field_id_field].astype(str).str.len() > 0].copy()
     fields = fields[fields.geometry.notna() & ~fields.geometry.is_empty].copy()
     fields = fields[fields["tile"].map(_derive_tile_from_text) == tile_norm].copy()
@@ -350,10 +375,7 @@ def _tile_field_mukey_from_raster(
                     mukey_field: str(mk),
                     "source_name": str(meta["source_name"]),
                     "overlap_area": overlap_area,
-                    "field_area": field_area,
-                    "pct_field_overlap": pct_field_overlap,
-                    "pixel_count": cnt,
-                    "pixel_area": pixel_area,
+                    "pct_overlap": pct_field_overlap,
                 }
             )
 
@@ -370,77 +392,32 @@ def _write_outputs(
     field_id_field: str,
     mukey_field: str,
     output_csv: str,
-    output_long_csv: str,
 ):
     out_csv = _resolve(output_csv)
-    out_long = _resolve(output_long_csv)
     out_csv.parent.mkdir(parents=True, exist_ok=True)
-    out_long.parent.mkdir(parents=True, exist_ok=True)
-
-    with out_long.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(
-            f,
-            fieldnames=["tile", field_id_field, mukey_field, "source_name", "overlap_area", "field_area", "pct_field_overlap", "pixel_count", "pixel_area"],
-        )
-        w.writeheader()
-        for row in long_rows:
-            w.writerow(row)
-
-    grouped: dict[tuple[str, str], dict[str, Any]] = {}
-    for row in long_rows:
-        key = (str(row["tile"]), str(row[field_id_field]))
-        item = grouped.setdefault(
-            key,
-            {
-                "tile": str(row["tile"]),
-                field_id_field: str(row[field_id_field]),
-                "source_name": str(row.get("source_name") or ""),
-                "field_area": float(row.get("field_area") or 0.0),
-                "mukeys": [],
-                "mukey_pct": {},
-                "mukey_overlap_area": {},
-            },
-        )
-        mk = str(row[mukey_field])
-        if mk not in item["mukeys"]:
-            item["mukeys"].append(mk)
-        item["mukey_pct"][mk] = float(row.get("pct_field_overlap") or 0.0)
-        item["mukey_overlap_area"][mk] = float(row.get("overlap_area") or 0.0)
 
     with out_csv.open("w", encoding="utf-8", newline="") as f:
         w = csv.DictWriter(
             f,
             fieldnames=[
-                "tile",
                 field_id_field,
-                "mukey_count",
-                "mukeys_json",
-                "mukey_pct_field_json",
-                "mukey_overlap_area_json",
-                "field_area",
-                "source_name",
+                mukey_field,
+                "pct_overlap",
+                "overlap_area",
             ],
         )
         w.writeheader()
-        for key in sorted(grouped.keys()):
-            item = grouped[key]
-            mukeys = sorted(item["mukeys"])
-            pct_map = {mk: item["mukey_pct"].get(mk, 0.0) for mk in mukeys}
-            overlap_map = {mk: item["mukey_overlap_area"].get(mk, 0.0) for mk in mukeys}
+        for row in long_rows:
             w.writerow(
                 {
-                    "tile": item["tile"],
-                    field_id_field: item[field_id_field],
-                    "mukey_count": len(mukeys),
-                    "mukeys_json": json.dumps(mukeys, separators=(",", ":")),
-                    "mukey_pct_field_json": json.dumps(pct_map, separators=(",", ":")),
-                    "mukey_overlap_area_json": json.dumps(overlap_map, separators=(",", ":")),
-                    "field_area": item.get("field_area", 0.0),
-                    "source_name": item.get("source_name", ""),
+                    field_id_field: row[field_id_field],
+                    mukey_field: row[mukey_field],
+                    "pct_overlap": row["pct_overlap"],
+                    "overlap_area": row["overlap_area"],
                 }
             )
 
-    return out_csv, out_long, grouped
+    return out_csv
 
 
 def build_tile_field_mukey_map(
@@ -493,12 +470,11 @@ def build_tile_field_mukey_map(
         verbose=verbose,
     )
 
-    out_csv, out_long, grouped = _write_outputs(
+    out_csv = _write_outputs(
         long_rows=long_rows,
         field_id_field=field_id_field,
         mukey_field=mukey_field,
         output_csv=output_csv,
-        output_long_csv=output_long_csv,
     )
 
     summary_path = _resolve(summary_json)
@@ -521,11 +497,9 @@ def build_tile_field_mukey_map(
             "tile_mukey_count": int(len(tile_mukeys)),
             "field_rows": int(len(fields_projected)),
             "unique_tile_field_mukey_pairs": int(len(long_rows)),
-            "unique_tile_field_rows": int(len(grouped)),
         },
         "outputs": {
             "output_csv": out_csv.as_posix(),
-            "output_long_csv": out_long.as_posix(),
             "summary_json": summary_path.as_posix(),
         },
     }
@@ -546,8 +520,8 @@ def main() -> int:
     ap.add_argument("--field-id-field", default="tile_field_id")
     ap.add_argument("--tile-field", default="tile_id", help="Field polygon column containing tile id")
     ap.add_argument("--mukey-field", default="mukey")
-    ap.add_argument("--output-csv", required=True, help="Wide CSV grouped by tile+field")
-    ap.add_argument("--output-long-csv", required=True, help="Long CSV one row per tile+field+mukey")
+    ap.add_argument("--output-csv", required=True, help="CSV one row per tile_field_id,mukey")
+    ap.add_argument("--output-long-csv", default="", help="Deprecated; ignored")
     ap.add_argument("--summary-json", required=True)
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
