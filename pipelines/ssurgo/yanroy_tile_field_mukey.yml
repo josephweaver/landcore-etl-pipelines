@@ -17,7 +17,6 @@ vars:
   per_tile_outdir: "{outdir}/by_tile"
   tile_field_mukey_csv: "{outdir}/tile_field2mukey.csv"
   tile_field_mukey_glob: "{per_tile_outdir}/*.tile_field_mukey_map.csv"
-  tile_field_mukey_max_concurrency: 8
   duckdb_table_tile_field_mukey: rel_tile_field_mukey
   duckdb_load_mode: replace
 dirs:
@@ -31,8 +30,6 @@ steps:
       script_args: "--tile \"{item}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_path}\" --field-id-field \"{field_id_field}\" --tile-field \"{tile_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{per_tile_outdir}/{item}.tile_field_mukey_map.csv\" --verbose"
       verbose: true
     foreach: tiles
-    resources:
-      foreach_max_concurrency: "{tile_field_mukey_max_concurrency}"
     output_var: tile_field_mukey
   - name: "{sys.step.NN}_combine_tile_field_mukey"
     plugin: combine_files
