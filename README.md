@@ -43,3 +43,50 @@ This repository contains LandCore-specific ETL pipelines and scripts.
   - SSURGO weighted NCCPI by `tile_field_id`
   - PRISM VPDMAX field-year
   in downstream tillage model-input assembly.
+
+## Working with Codex
+
+This repo is intended to be developed together with the sibling ETL framework repo:
+
+- `../etl`
+
+If you want Codex to help create or repair pipelines, start the session from the
+`research-etl` repo root so it can see the AI routing and prompt-engineering files.
+
+Recommended workflow:
+
+1. Open Codex in:
+   - `../etl`
+2. Tell Codex which target repo you are working in:
+   - `../landcore-etl-pipelines`
+3. For new pipeline creation, ask Codex to:
+   - read `CODEX.md`
+   - use the `ai_prompts/` guidance
+   - inspect existing example pipelines in `../landcore-etl-pipelines`
+4. If the pipeline creates a new dataset, also have Codex create or update the
+   matching entry in:
+   - `../landcore-data-catalog`
+
+Useful prompt to start a session:
+
+```text
+Read CODEX.md in ../etl, use the ai_prompts guidance for pipeline authoring,
+inspect relevant existing pipelines in ../landcore-etl-pipelines, and help me
+create or update one pipeline plus its matching data-catalog entry.
+```
+
+Useful prompt for status guidance:
+
+```text
+Read CODEX.md in ../etl, use the pipeline progress checklist, inspect the current
+pipelines in ../landcore-etl-pipelines, and tell me what the next critical-path
+step is.
+```
+
+Useful prompt for debugging:
+
+```text
+Read CODEX.md in ../etl, use the pipeline failure triage checklist, inspect the
+failing pipeline and logs, fix the issue, and if the lesson is reusable update
+the relevant ai_prompts file too.
+```
