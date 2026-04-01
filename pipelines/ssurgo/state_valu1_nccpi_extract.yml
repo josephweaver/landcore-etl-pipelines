@@ -1,0 +1,35 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/ssurgo/state_download.yml
+vars:
+  dataset_id: stage.ssurgo_state_valu1_nccpi_v1
+  name: ssurgo_state_valu1_nccpi_extract
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  states: "IA,IL,IN,MI,MN,MO,OH,SD,WI"
+  gdb_dir: "{env.basedir}/data/ssurgo/state/extract"
+  outdir: "{env.basedir}/data/ssurgo/state_nccpi"
+  per_state_outdir: "{outdir}/by_state"
+  per_state_glob: "{per_state_outdir}/*.valu1_nccpi.csv"
+  combined_csv: "{outdir}/valu1_nccpi_by_state.csv"
+  ogr2ogr_bin: "/opt/software-current/2023.06/x86_64/generic/software/GDAL/3.11.1-foss-2025a/bin/ogr2ogr"
+dirs:
+  workdir: "{workdir}"
+  logdir: "{logdir}"
+steps:
+  - name: "{sys.step.NN}_extract_state_valu1_nccpi"
+    plugin: exec_script
+    args:
+      script: scripts/ssurgo/extract_state_valu1_nccpi.py
+      script_args: "--state-code \"{item}\" --gdb-path \"{gdb_dir}/gSSURGO_{item}.gdb\" --output-csv \"{per_state_outdir}/{item}.valu1_nccpi.csv\" --summary-json \"{per_state_outdir}/{item}.valu1_nccpi.summary.json\" --ogr2ogr-bin \"{ogr2ogr_bin}\" --layer-name \"Valu1\" --verbose"
+      verbose: true
+    foreach: states
+    output_var: state_valu1_nccpi
+  - name: "{sys.step.NN}_combine_state_valu1_nccpi"
+    plugin: combine_files
+    args:
+      input_glob: "{per_state_glob}"
+      output_file: "{combined_csv}"
+      format: csv
+      verbose: true
+    output_var: state_valu1_nccpi_combined
