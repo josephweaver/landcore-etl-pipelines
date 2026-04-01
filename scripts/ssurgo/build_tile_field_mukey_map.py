@@ -459,13 +459,20 @@ def build_tile_field_mukey_map(
     verbose: bool,
 ) -> dict[str, Any]:
     tile_norm = _normalize_tile(tile)
-    tile_mukey_path, tile_mukeys, tile_col_used, mukey_col_used = _load_tile_mukeys(
-        tile_mukey_csv,
-        tile_norm,
-        tile_field,
-        mukey_field,
-    )
-    _vlog(verbose, f"tile={tile_norm} mukeys={len(tile_mukeys)} from={tile_mukey_path.as_posix()}")
+    tile_mukey_path: Path | None = None
+    tile_mukeys: set[int] = set()
+    tile_col_used = ""
+    mukey_col_used = ""
+    if str(tile_mukey_csv or "").strip():
+        tile_mukey_path, tile_mukeys, tile_col_used, mukey_col_used = _load_tile_mukeys(
+            tile_mukey_csv,
+            tile_norm,
+            tile_field,
+            mukey_field,
+        )
+        _vlog(verbose, f"tile={tile_norm} mukeys={len(tile_mukeys)} from={tile_mukey_path.as_posix()}")
+    else:
+        _vlog(verbose, f"tile={tile_norm} running without tile_mukey prefilter")
 
     fields, input_files = _load_fields_for_tile(
         tile=tile_norm,
@@ -499,7 +506,7 @@ def build_tile_field_mukey_map(
     summary = {
         "inputs": {
             "tile": tile_norm,
-            "tile_mukey_csv": tile_mukey_path.as_posix(),
+            "tile_mukey_csv": tile_mukey_path.as_posix() if tile_mukey_path is not None else "",
             "tile_mukey_tile_col_used": tile_col_used,
             "tile_mukey_mukey_col_used": mukey_col_used,
             "fields_path": str(fields_path or ""),
@@ -532,7 +539,7 @@ def main() -> int:
         description="Build tile->field->mukey map for one tile using SSURGO MUKEY raster intersections."
     )
     ap.add_argument("--tile", required=True, help="Tile id (e.g. h17v08)")
-    ap.add_argument("--tile-mukey-csv", required=True, help="CSV produced by build_tile_mukey_map.py")
+    ap.add_argument("--tile-mukey-csv", default="", help="Optional CSV produced by build_tile_mukey_map.py")
     ap.add_argument("--fields-path", default="", help="Single field polygons vector path")
     ap.add_argument("--fields-glob", default="", help="Glob for field polygon vectors")
     ap.add_argument("--ssurgo-path", required=True, help="SSURGO MUKEY raster path (e.g. MURASTER_30m.tif)")
