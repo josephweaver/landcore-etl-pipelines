@@ -282,13 +282,13 @@ def _tile_field_mukey_from_raster(
         nodata = ds.nodata
 
         field_rows = fields.reset_index(drop=True).copy()
-        field_rows["_fid_idx"] = np.arange(1, len(field_rows) + 1, dtype=np.int64)
+        field_rows["fid_idx"] = np.arange(1, len(field_rows) + 1, dtype=np.int64)
         field_rows["field_area"] = field_rows.geometry.area
         field_rows = field_rows[field_rows["field_area"] > 0].copy()
         if field_rows.empty:
             raise RuntimeError(f"no positive-area field polygons for tile={tile}")
 
-        shapes = [(geom, int(fid)) for geom, fid in zip(field_rows.geometry, field_rows["_fid_idx"], strict=False)]
+        shapes = [(geom, int(fid)) for geom, fid in zip(field_rows.geometry, field_rows["fid_idx"], strict=False)]
         field_idx_arr = rasterize(
             shapes,
             out_shape=(int(win.height), int(win.width)),
@@ -325,7 +325,7 @@ def _tile_field_mukey_from_raster(
 
         field_meta: dict[int, dict[str, Any]] = {}
         for row in field_rows.itertuples(index=False):
-            idx = int(getattr(row, "_fid_idx"))
+            idx = int(getattr(row, "fid_idx"))
             field_meta[idx] = {
                 "field_id": _to_text(getattr(row, field_id_field)),
                 "source_name": _to_text(getattr(row, "source_name", "")),
