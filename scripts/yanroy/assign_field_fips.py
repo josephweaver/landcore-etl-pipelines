@@ -18,6 +18,58 @@ def _to_text(value: Any) -> str:
     return str(value).strip()
 
 
+def _write_empty_outputs(
+    *,
+    output_csv: Path,
+    summary_json: Path,
+    tile: str,
+    field_boundary_path: Path,
+    county_path: Path,
+    field_id_field: str,
+    output_tile_field_id_field: str,
+) -> dict[str, Any]:
+    import csv
+
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    summary_json.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = [
+        field_id_field,
+        output_tile_field_id_field,
+        "tile_coord",
+        "yanroy_field_id",
+        "FIPS",
+        "STATEFP",
+        "COUNTYFP",
+        "county",
+        "county_name_lsad",
+        "field_area",
+        "overlap_area",
+        "county_overlap_pct",
+        "county_match_count",
+    ]
+    with output_csv.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+
+    summary = {
+        "field_boundary_path": field_boundary_path.as_posix(),
+        "county_path": county_path.as_posix(),
+        "output_csv": output_csv.as_posix(),
+        "tile": str(tile or "").strip().lower(),
+        "field_boundary_input_count": 0,
+        "dissolved_field_count": 0,
+        "intersection_row_count": 0,
+        "output_row_count": 0,
+        "ambiguous_field_count": 0,
+        "empty_tile": True,
+        "empty_reason": "no field rows after identifier/tile filtering",
+        "field_id_field": field_id_field,
+        "output_tile_field_id_field": output_tile_field_id_field,
+    }
+    summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+    return summary
+
+
 def build_field_fips(
     *,
     field_boundary_path: Path,
@@ -92,7 +144,15 @@ def build_field_fips(
         field_gdf[tile_coord_field] = field_gdf[tile_coord_field].map(_to_text).str.lower()
         field_gdf = field_gdf[field_gdf[tile_coord_field] == tile_norm].copy()
     if field_gdf.empty:
-        raise RuntimeError("field boundary dataset has no rows after identifier/tile filtering")
+        return _write_empty_outputs(
+            output_csv=output_csv,
+            summary_json=summary_json,
+            tile=tile_norm,
+            field_boundary_path=field_boundary_path,
+            county_path=county_path,
+            field_id_field=field_id_field,
+            output_tile_field_id_field=output_tile_field_id_field,
+        )
 
     dissolve_fields = [field_id_field, tile_field_id_field]
     agg_map: dict[str, str] = {}
