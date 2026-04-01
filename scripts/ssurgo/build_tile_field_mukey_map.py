@@ -432,7 +432,6 @@ def build_tile_field_mukey_map(
     mukey_field: str,
     output_csv: str,
     output_long_csv: str,
-    summary_json: str,
     verbose: bool,
 ) -> dict[str, Any]:
     tile_norm = _normalize_tile(tile)
@@ -477,8 +476,6 @@ def build_tile_field_mukey_map(
         output_csv=output_csv,
     )
 
-    summary_path = _resolve(summary_json)
-    summary_path.parent.mkdir(parents=True, exist_ok=True)
     summary = {
         "inputs": {
             "tile": tile_norm,
@@ -500,10 +497,8 @@ def build_tile_field_mukey_map(
         },
         "outputs": {
             "output_csv": out_csv.as_posix(),
-            "summary_json": summary_path.as_posix(),
         },
     }
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     _vlog(verbose, f"complete tile={tile_norm} pairs={len(long_rows)}")
     return summary
 
@@ -522,7 +517,6 @@ def main() -> int:
     ap.add_argument("--mukey-field", default="mukey")
     ap.add_argument("--output-csv", required=True, help="CSV one row per tile_field_id,mukey")
     ap.add_argument("--output-long-csv", default="", help="Deprecated; ignored")
-    ap.add_argument("--summary-json", required=True)
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -537,7 +531,6 @@ def main() -> int:
         mukey_field=str(args.mukey_field),
         output_csv=str(args.output_csv),
         output_long_csv=str(args.output_long_csv),
-        summary_json=str(args.summary_json),
         verbose=bool(args.verbose),
     )
     return 0

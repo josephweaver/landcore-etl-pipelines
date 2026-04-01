@@ -16,7 +16,6 @@ vars:
   outdir: "{env.basedir}/data/ssurgo/yanroy_mukey"
   per_tile_outdir: "{outdir}/by_tile"
   tile_field_mukey_csv: "{outdir}/tile_field2mukey.csv"
-  tile_field_mukey_summary_json: "{outdir}/tile_field_mukey_summary.json"
   tile_field_mukey_glob: "{per_tile_outdir}/*.tile_field_mukey_map.csv"
   tile_field_mukey_max_concurrency: 8
   duckdb_table_tile_field_mukey: rel_tile_field_mukey
@@ -29,7 +28,7 @@ steps:
     plugin: exec_script
     args:
       script: scripts/ssurgo/build_tile_field_mukey_map.py
-      script_args: "--tile \"{item}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_path}\" --field-id-field \"{field_id_field}\" --tile-field \"{tile_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{per_tile_outdir}/{item}.tile_field_mukey_map.csv\" --summary-json \"{per_tile_outdir}/{item}.tile_field_mukey_summary.json\" --verbose"
+      script_args: "--tile \"{item}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_path}\" --field-id-field \"{field_id_field}\" --tile-field \"{tile_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{per_tile_outdir}/{item}.tile_field_mukey_map.csv\" --verbose"
       verbose: true
     foreach: tiles
     resources:
