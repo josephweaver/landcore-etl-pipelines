@@ -24,6 +24,7 @@ def build_field_fips(
     county_path: Path,
     output_csv: Path,
     summary_json: Path,
+    tile: str,
     field_id_field: str,
     tile_field_id_field: str,
     output_tile_field_id_field: str,
@@ -57,6 +58,7 @@ def build_field_fips(
         raise RuntimeError("field boundary dataset missing CRS")
     if county_gdf.crs is None:
         raise RuntimeError("county dataset missing CRS")
+    tile_norm = _to_text(tile).lower()
 
     required_field_cols = [field_id_field, tile_field_id_field]
     missing_field_cols = [c for c in required_field_cols if c not in field_gdf.columns]
@@ -84,8 +86,13 @@ def build_field_fips(
         (field_gdf[field_id_field].astype(str).str.len() > 0)
         & (field_gdf[tile_field_id_field].astype(str).str.len() > 0)
     ].copy()
+    if tile_norm:
+        if tile_coord_field not in field_gdf.columns:
+            raise ValueError(f"field boundary dataset missing tile coordinate column: {tile_coord_field}")
+        field_gdf[tile_coord_field] = field_gdf[tile_coord_field].map(_to_text).str.lower()
+        field_gdf = field_gdf[field_gdf[tile_coord_field] == tile_norm].copy()
     if field_gdf.empty:
-        raise RuntimeError("field boundary dataset has no rows with usable field identifiers")
+        raise RuntimeError("field boundary dataset has no rows after identifier/tile filtering")
 
     dissolve_fields = [field_id_field, tile_field_id_field]
     agg_map: dict[str, str] = {}
@@ -173,6 +180,7 @@ def build_field_fips(
         "field_boundary_path": field_boundary_path.as_posix(),
         "county_path": county_path.as_posix(),
         "output_csv": output_csv.as_posix(),
+        "tile": tile_norm,
         "field_boundary_input_count": int(len(field_gdf)),
         "dissolved_field_count": int(len(dissolved)),
         "intersection_row_count": int(len(intersections)),
@@ -201,6 +209,7 @@ def main() -> int:
     ap.add_argument("--county-path", required=True)
     ap.add_argument("--output-csv", required=True)
     ap.add_argument("--summary-json", required=True)
+    ap.add_argument("--tile", default="")
     ap.add_argument("--field-id-field", default="field_id")
     ap.add_argument("--tile-field-id-field", default="legacy_tile_field_id")
     ap.add_argument("--output-tile-field-id-field", default="tile_field_ID")
@@ -219,6 +228,7 @@ def main() -> int:
         county_path=Path(str(args.county_path)).expanduser().resolve(),
         output_csv=Path(str(args.output_csv)).expanduser().resolve(),
         summary_json=Path(str(args.summary_json)).expanduser().resolve(),
+        tile=str(args.tile or ""),
         field_id_field=str(args.field_id_field),
         tile_field_id_field=str(args.tile_field_id_field),
         output_tile_field_id_field=str(args.output_tile_field_id_field),

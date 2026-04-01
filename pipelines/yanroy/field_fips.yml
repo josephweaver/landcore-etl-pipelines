@@ -7,10 +7,14 @@ vars:
   name: yanroy_field_fips
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
+  tiles: "{project.tiles_of_interest}"
   yanroy_dir: "{env.basedir}/data/yanroy"
   outdir: "{yanroy_dir}/field_fips"
   field_boundary_path: "{yanroy_dir}/db/field_boundary.gpkg"
   county_path: "{env.basedir}/data/tiger/county/extract/tl_2025_us_county.shp"
+  per_tile_outdir: "{outdir}/by_tile"
+  per_tile_csv_glob: "{per_tile_outdir}/*.field_fips.csv"
+  per_tile_summary_glob: "{per_tile_outdir}/*.field_fips.summary.json"
   output_csv: "{outdir}/yanroy_tile_field_fips.csv"
   summary_json: "{outdir}/yanroy_tile_field_fips.summary.json"
   field_id_field: field_id
@@ -20,6 +24,24 @@ steps:
     plugin: exec_script
     args:
       script: scripts/yanroy/assign_field_fips.py
-      script_args: "--field-boundary-path \"{field_boundary_path}\" --county-path \"{county_path}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\" --field-id-field \"{field_id_field}\" --tile-field-id-field \"{tile_field_id_field}\" --output-tile-field-id-field \"tile_field_ID\" --verbose"
+      script_args: "--field-boundary-path \"{field_boundary_path}\" --county-path \"{county_path}\" --output-csv \"{per_tile_outdir}/{item}.field_fips.csv\" --summary-json \"{per_tile_outdir}/{item}.field_fips.summary.json\" --tile \"{item}\" --field-id-field \"{field_id_field}\" --tile-field-id-field \"{tile_field_id_field}\" --output-tile-field-id-field \"tile_field_ID\" --verbose"
       verbose: true
+    foreach: tiles
+    resources:
+      foreach_max_concurrency: 8
     output_var: field_fips
+  - name: "{sys.step.NN}_combine_tile_field_fips"
+    plugin: combine_files
+    args:
+      input_glob: "{per_tile_csv_glob}"
+      output_file: "{output_csv}"
+      format: csv
+      verbose: true
+    output_var: field_fips_combined
+  - name: "{sys.step.NN}_combine_tile_field_fips_summaries"
+    plugin: exec_script
+    args:
+      script: scripts/yanroy/combine_field_fips_summaries.py
+      script_args: "--summary-glob \"{per_tile_summary_glob}\" --output-csv \"{output_csv}\" --output-summary-json \"{summary_json}\" --verbose"
+      verbose: true
+    output_var: field_fips_summary
