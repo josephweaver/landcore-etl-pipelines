@@ -6,7 +6,16 @@ vars:
   name: ssurgo_state_valu1_nccpi_extract
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
-  states: "IA,IL,IN,MI,MN,MO,OH,SD,WI"
+  states:
+    - IA
+    - IL
+    - IN
+    - MI
+    - MN
+    - MO
+    - OH
+    - SD
+    - WI
   gdb_dir: "{env.basedir}/data/ssurgo/state/extract"
   outdir: "{env.basedir}/data/ssurgo/state_nccpi"
   per_state_outdir: "{outdir}/by_state"
