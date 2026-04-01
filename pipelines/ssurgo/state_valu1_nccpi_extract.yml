@@ -22,15 +22,13 @@ vars:
   per_state_glob: "{per_state_outdir}/*.valu1_nccpi.csv"
   combined_csv: "{outdir}/valu1_nccpi_by_state.csv"
   ogr2ogr_bin: "/opt/software-current/2023.06/x86_64/generic/software/GDAL/3.11.1-foss-2025a/bin/ogr2ogr"
-dirs:
-  workdir: "{workdir}"
-  logdir: "{logdir}"
+  gdal_module: "GDAL/3.11.1-foss-2025a"
 steps:
   - name: "{sys.step.NN}_extract_state_valu1_nccpi"
     plugin: exec_script
     args:
       script: scripts/ssurgo/extract_state_valu1_nccpi.py
-      script_args: "--state-code \"{item}\" --gdb-path \"{gdb_dir}/gSSURGO_{item}.gdb\" --output-csv \"{per_state_outdir}/{item}.valu1_nccpi.csv\" --summary-json \"{per_state_outdir}/{item}.valu1_nccpi.summary.json\" --ogr2ogr-bin \"{ogr2ogr_bin}\" --layer-name \"Valu1\" --verbose"
+      script_args: "--state-code \"{item}\" --gdb-path \"{gdb_dir}/gSSURGO_{item}.gdb\" --output-csv \"{per_state_outdir}/{item}.valu1_nccpi.csv\" --summary-json \"{per_state_outdir}/{item}.valu1_nccpi.summary.json\" --ogr2ogr-bin \"{ogr2ogr_bin}\" --gdal-module \"{gdal_module}\" --layer-name \"Valu1\" --verbose"
       verbose: true
     foreach: states
     output_var: state_valu1_nccpi

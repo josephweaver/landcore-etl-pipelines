@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -35,26 +36,59 @@ def _resolve_ogr2ogr(path_text: str) -> str:
     raise RuntimeError("ogr2ogr not found; pass --ogr2ogr-bin or ensure it is on PATH")
 
 
-def _run_ogr2ogr(*, ogr2ogr_bin: str, gdb_path: Path, tmp_csv: Path, layer_name: str, verbose: bool) -> None:
+def _shell_quote(text: str) -> str:
+    value = str(text or "")
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
+def _run_ogr2ogr(
+    *,
+    ogr2ogr_bin: str,
+    gdb_path: Path,
+    tmp_csv: Path,
+    layer_name: str,
+    gdal_module: str,
+    verbose: bool,
+) -> None:
     sql = (
         "SELECT mukey, nccpi3all, nccpi3corn, nccpi3soy "
         f"FROM {layer_name}"
     )
-    cmd = [
-        ogr2ogr_bin,
-        "-f",
-        "CSV",
-        tmp_csv.as_posix(),
-        gdb_path.as_posix(),
-        "-sql",
-        sql,
-        "-dialect",
-        "OGRSQL",
-        "-overwrite",
-    ]
+    env = os.environ.copy()
+    module_name = str(gdal_module or "").strip()
+    if module_name:
+        shell_script = " ".join(
+            [
+                "source /etc/profile >/dev/null 2>&1",
+                "module purge >/dev/null 2>&1",
+                f"module load {_shell_quote(module_name)} >/dev/null 2>&1",
+                _shell_quote(ogr2ogr_bin),
+                "-f CSV",
+                _shell_quote(tmp_csv.as_posix()),
+                _shell_quote(gdb_path.as_posix()),
+                "-sql",
+                _shell_quote(sql),
+                "-dialect OGRSQL",
+                "-overwrite",
+            ]
+        )
+        cmd: list[str] = ["bash", "-lc", shell_script]
+    else:
+        cmd = [
+            ogr2ogr_bin,
+            "-f",
+            "CSV",
+            tmp_csv.as_posix(),
+            gdb_path.as_posix(),
+            "-sql",
+            sql,
+            "-dialect",
+            "OGRSQL",
+            "-overwrite",
+        ]
     if verbose:
         print("[extract_state_valu1_nccpi] running:", " ".join(cmd))
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False, env=env)
     if proc.returncode != 0:
         raise RuntimeError(
             "ogr2ogr failed rc="
@@ -104,6 +138,7 @@ def main() -> int:
     ap.add_argument("--summary-json", required=True)
     ap.add_argument("--ogr2ogr-bin", default="")
     ap.add_argument("--layer-name", default="Valu1")
+    ap.add_argument("--gdal-module", default="")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -118,6 +153,7 @@ def main() -> int:
         raise FileNotFoundError(f"gdb not found: {gdb_path}")
 
     ogr2ogr_bin = _resolve_ogr2ogr(str(args.ogr2ogr_bin))
+    gdal_module = str(args.gdal_module or "").strip()
     summary_json.parent.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix=f"valu1_{state_code.lower()}_") as tmpdir:
@@ -127,6 +163,7 @@ def main() -> int:
             gdb_path=gdb_path,
             tmp_csv=tmp_csv,
             layer_name=str(args.layer_name),
+            gdal_module=gdal_module,
             verbose=bool(args.verbose),
         )
         summary = _rewrite_output(
@@ -140,6 +177,7 @@ def main() -> int:
             "gdb_path": gdb_path.as_posix(),
             "ogr2ogr_bin": ogr2ogr_bin,
             "layer_name": str(args.layer_name),
+            "gdal_module": gdal_module,
         }
     )
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")

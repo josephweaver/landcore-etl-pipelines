@@ -6,9 +6,6 @@ vars:
   logdir: "{workdir}/logs"
   rawdir: "{env.basedir}/data/ssurgo/state/raw"
   extractdir: "{env.basedir}/data/ssurgo/state/extract"
-dirs:
-  workdir: "{workdir}"
-  logdir: "{logdir}"
 steps:
   - name: "{sys.step.NN}_download_gssurgo_ia"
     plugin: web_download_list
