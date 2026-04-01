@@ -1,0 +1,35 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/ssurgo/yanroy_tile_field_mukey.yml
+  - pipelines/ssurgo/state_valu1_nccpi_extract.yml
+vars:
+  dataset_id: stage.ssurgo_tile_field_nccpi_v1
+  name: ssurgo_yanroy_tile_field_nccpi
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  field_id_field: tile_field_id
+  mukey_field: mukey
+  weight_field: pct_overlap
+  value_fields: "nccpi3all,nccpi3corn,nccpi3soy"
+  outdir: "{env.basedir}/data/ssurgo/yanroy_nccpi"
+  tile_field_mukey_csv: "{env.basedir}/data/ssurgo/yanroy_mukey/tile_field2mukey.csv"
+  valu1_csv: "{env.basedir}/data/ssurgo/state_nccpi/valu1_nccpi_by_state.csv"
+  field_valu1_csv: "{outdir}/tile_field_nccpi_long.csv"
+  field_valu1_summary_json: "{outdir}/tile_field_nccpi_long.summary.json"
+  field_nccpi_csv: "{outdir}/tile_field_nccpi_weighted.csv"
+  field_nccpi_summary_json: "{outdir}/tile_field_nccpi_weighted.summary.json"
+steps:
+  - name: "{sys.step.NN}_join_tile_field_mukey_to_valu1"
+    plugin: exec_script
+    args:
+      script: scripts/ssurgo/join_tile_field_mukey_to_valu1.py
+      script_args: "--tile-field-mukey-csv \"{tile_field_mukey_csv}\" --valu1-csv \"{valu1_csv}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --weight-field \"{weight_field}\" --value-fields \"{value_fields}\" --output-csv \"{field_valu1_csv}\" --summary-json \"{field_valu1_summary_json}\" --verbose"
+      verbose: true
+    output_var: field_valu1_joined
+  - name: "{sys.step.NN}_aggregate_tile_field_nccpi_weighted"
+    plugin: exec_script
+    args:
+      script: scripts/ssurgo/aggregate_field_nccpi.py
+      script_args: "--input-csv \"{field_valu1_csv}\" --field-id-field \"{field_id_field}\" --weight-field \"{weight_field}\" --value-fields \"{value_fields}\" --output-csv \"{field_nccpi_csv}\" --summary-json \"{field_nccpi_summary_json}\" --verbose"
+      verbose: true
+    output_var: field_nccpi_weighted
