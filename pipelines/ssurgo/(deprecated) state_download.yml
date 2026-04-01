@@ -17,14 +17,14 @@ steps:
   - name: "{sys.step.NN}_select_state_urls"
     plugin: exec_script
     args:
-      script: scripts/ssurgo/select_state_urls.py
+      script: scripts/ssurgo/(deprecated) select_state_urls.py
       script_args: "--states \"{states_csv}\" --urls-file \"{urls_file}\" --output-file \"{selected_urls_file}\" --strict --verbose"
       verbose: true
     output_var: selected_urls
   - name: "{sys.step.NN}_download_state_archives"
     plugin: exec_script
     args:
-      script: scripts/ssurgo/download_urls.py
+      script: scripts/ssurgo/(deprecated) download_urls.py
       script_args: "--urls-file \"{selected_urls_file}\" --out-dir \"{rawdir}\" --timeout-seconds 600 --summary-json \"{download_summary_json}\" --verbose"
       verbose: true
     output_var: staged_raw
