@@ -1,0 +1,100 @@
+project_id: land_core
+vars:
+  dataset_id: raw.ssurgo_state_download_v1
+  name: ssurgo_state_download
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  rawdir: "{env.basedir}/data/ssurgo/state/raw"
+  extractdir: "{env.basedir}/data/ssurgo/state/extract"
+dirs:
+  workdir: "{workdir}"
+  logdir: "{logdir}"
+steps:
+  - name: "{sys.step.NN}_download_gssurgo_ia"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_IA.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2053608515775"
+    output_var: gssurgo_ia
+  - name: "{sys.step.NN}_download_gssurgo_il"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_IL.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2053612778074"
+    output_var: gssurgo_il
+  - name: "{sys.step.NN}_download_gssurgo_in"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_IN.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2053607843504"
+    output_var: gssurgo_in
+  - name: "{sys.step.NN}_download_gssurgo_mi"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_MI.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2053618737116"
+    output_var: gssurgo_mi
+  - name: "{sys.step.NN}_download_gssurgo_mn"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_MN.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2100384657308"
+    output_var: gssurgo_mn
+  - name: "{sys.step.NN}_download_gssurgo_mo"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_MO.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2053616798033"
+    output_var: gssurgo_mo
+  - name: "{sys.step.NN}_download_gssurgo_oh"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_OH.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2053629582337"
+    output_var: gssurgo_oh
+  - name: "{sys.step.NN}_download_gssurgo_sd"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_SD.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2053633074217"
+    output_var: gssurgo_sd
+  - name: "{sys.step.NN}_download_gssurgo_wi"
+    plugin: web_download_list
+    args:
+      out: "{rawdir}"
+      out_file: "{rawdir}/gSSURGO_WI.zip"
+      overwrite: false
+      timeout_seconds: 900
+      urls: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2053636237428"
+    output_var: gssurgo_wi
+  - name: "{sys.step.NN}_extract_state_archives"
+    plugin: archive_extract
+    args:
+      archive_glob: "{rawdir}/gSSURGO_*.zip"
+      out: "{extractdir}"
+      overwrite: true
+    output_var: extracted_raw

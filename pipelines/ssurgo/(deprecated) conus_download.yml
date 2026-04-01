@@ -5,8 +5,8 @@ vars:
   ssurgo_conus_url: "https://nrcs.app.box.com/index.php?rm=box_download_shared_file&vanity_name=soils&file_id=f_2063090987270"
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
-  rawdir: "{env.basedir}/data/ssurgo/state/raw"
-  extractdir: "{env.basedir}/data/ssurgo/state/extract"
+  rawdir: "{env.basedir}/data/ssurgo/conus/raw"
+  extractdir: "{env.basedir}/data/ssurgo/conus/extract"
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
