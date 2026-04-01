@@ -420,6 +420,28 @@ def _write_outputs(
     return out_csv
 
 
+def _write_empty_output(
+    *,
+    field_id_field: str,
+    mukey_field: str,
+    output_csv: str,
+):
+    out_csv = _resolve(output_csv)
+    out_csv.parent.mkdir(parents=True, exist_ok=True)
+    with out_csv.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(
+            f,
+            fieldnames=[
+                field_id_field,
+                mukey_field,
+                "pct_overlap",
+                "overlap_area",
+            ],
+        )
+        w.writeheader()
+    return out_csv
+
+
 def build_tile_field_mukey_map(
     *,
     tile: str,
@@ -450,14 +472,50 @@ def build_tile_field_mukey_map(
     else:
         _vlog(verbose, f"tile={tile_norm} running without tile_mukey prefilter")
 
-    fields, input_files = _load_fields_for_tile(
-        tile=tile_norm,
-        fields_path=fields_path,
-        fields_glob=fields_glob,
-        field_id_field=field_id_field,
-        tile_field=tile_field,
-        verbose=verbose,
-    )
+    try:
+        fields, input_files = _load_fields_for_tile(
+            tile=tile_norm,
+            fields_path=fields_path,
+            fields_glob=fields_glob,
+            field_id_field=field_id_field,
+            tile_field=tile_field,
+            verbose=verbose,
+        )
+    except RuntimeError as exc:
+        if "no field polygons loaded for tile=" not in str(exc):
+            raise
+        out_csv = _write_empty_output(
+            field_id_field=field_id_field,
+            mukey_field=mukey_field,
+            output_csv=output_csv,
+        )
+        summary = {
+            "inputs": {
+                "tile": tile_norm,
+                "tile_mukey_csv": tile_mukey_path.as_posix() if tile_mukey_path is not None else "",
+                "tile_mukey_tile_col_used": tile_col_used,
+                "tile_mukey_mukey_col_used": mukey_col_used,
+                "fields_path": str(fields_path or ""),
+                "fields_glob": str(fields_glob or ""),
+                "ssurgo_path": str(ssurgo_path or ""),
+                "field_id_field": field_id_field,
+                "tile_field": tile_field,
+                "mukey_field": mukey_field,
+                "input_files": [],
+            },
+            "counts": {
+                "tile_mukey_count": int(len(tile_mukeys)),
+                "field_rows": 0,
+                "unique_tile_field_mukey_pairs": 0,
+            },
+            "outputs": {
+                "output_csv": out_csv.as_posix(),
+            },
+            "skipped": True,
+            "skip_reason": f"no field polygons loaded for tile={tile_norm}",
+        }
+        _vlog(verbose, f"skip tile={tile_norm} no field polygons found")
+        return summary
 
     long_rows, fields_projected, raster_path = _tile_field_mukey_from_raster(
         fields=fields,
