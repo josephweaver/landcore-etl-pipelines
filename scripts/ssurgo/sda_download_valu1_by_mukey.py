@@ -5,6 +5,7 @@ import argparse
 import csv
 import json
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -62,13 +63,73 @@ def _post_sda_query(endpoint: str, sql: str, timeout_seconds: int) -> Any:
             "User-Agent": "landcore-etl/ssurgo-sda-valu1",
         },
     )
-    with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:  # noqa: S310
-        text = resp.read().decode("utf-8", errors="replace")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:  # noqa: S310
+            text = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as exc:
+        body = ""
+        try:
+            body = exc.read().decode("utf-8", errors="replace")
+        except Exception:
+            body = ""
+        snippet = body[:500].replace("\n", " ")
+        raise RuntimeError(
+            f"SDA HTTP error code={exc.code} reason={exc.reason} sql_len={len(sql)} body={snippet}"
+        ) from exc
     try:
         return json.loads(text)
     except Exception as exc:  # noqa: BLE001
         snippet = text[:500].replace("\n", " ")
         raise RuntimeError(f"SDA response is not JSON; snippet={snippet}") from exc
+
+
+def _fetch_chunk_rows(
+    *,
+    endpoint: str,
+    cols: list[str],
+    table_name: str,
+    chunk: list[str],
+    timeout_seconds: int,
+    verbose: bool,
+    depth: int = 0,
+) -> list[dict[str, Any]]:
+    sql = f"SELECT {','.join(cols)} FROM {table_name} WHERE mukey IN ({_sql_in_list(chunk)})"
+    try:
+        payload = _post_sda_query(endpoint, sql, timeout_seconds=timeout_seconds)
+        return _rows_from_sda_payload(payload)
+    except RuntimeError as exc:
+        message = str(exc)
+        if len(chunk) <= 1:
+            raise
+        if "code=400" not in message:
+            raise
+        mid = max(1, len(chunk) // 2)
+        left = chunk[:mid]
+        right = chunk[mid:]
+        if verbose:
+            print(
+                f"[sda_download_valu1_by_mukey] split_chunk depth={depth} "
+                f"size={len(chunk)} -> {len(left)} + {len(right)}"
+            )
+        rows_left = _fetch_chunk_rows(
+            endpoint=endpoint,
+            cols=cols,
+            table_name=table_name,
+            chunk=left,
+            timeout_seconds=timeout_seconds,
+            verbose=verbose,
+            depth=depth + 1,
+        )
+        rows_right = _fetch_chunk_rows(
+            endpoint=endpoint,
+            cols=cols,
+            table_name=table_name,
+            chunk=right,
+            timeout_seconds=timeout_seconds,
+            verbose=verbose,
+            depth=depth + 1,
+        )
+        return rows_left + rows_right
 
 
 def _rows_from_sda_payload(payload: Any) -> list[dict[str, Any]]:
@@ -164,9 +225,14 @@ def main() -> int:
     request_count = 0
     for chunk in _chunked(mukeys, chunk_size):
         request_count += 1
-        sql = f"SELECT {','.join(cols)} FROM {table_name} WHERE mukey IN ({_sql_in_list(chunk)})"
-        payload = _post_sda_query(endpoint, sql, timeout_seconds=timeout_seconds)
-        rows = _rows_from_sda_payload(payload)
+        rows = _fetch_chunk_rows(
+            endpoint=endpoint,
+            cols=cols,
+            table_name=table_name,
+            chunk=chunk,
+            timeout_seconds=timeout_seconds,
+            verbose=bool(args.verbose),
+        )
         for row in rows:
             mk = str(row.get("mukey") or "").strip()
             if not mk:
