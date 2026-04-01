@@ -57,11 +57,8 @@ def _run_ogr2ogr(
     env = os.environ.copy()
     module_name = str(gdal_module or "").strip()
     if module_name:
-        shell_script = " ".join(
+        ogr_cmd = " ".join(
             [
-                "source /etc/profile >/dev/null 2>&1",
-                "module purge >/dev/null 2>&1",
-                f"module load {_shell_quote(module_name)} >/dev/null 2>&1",
                 _shell_quote(ogr2ogr_bin),
                 "-f CSV",
                 _shell_quote(tmp_csv.as_posix()),
@@ -70,6 +67,14 @@ def _run_ogr2ogr(
                 _shell_quote(sql),
                 "-dialect OGRSQL",
                 "-overwrite",
+            ]
+        )
+        shell_script = " && ".join(
+            [
+                "source /etc/profile >/dev/null 2>&1",
+                "module purge >/dev/null 2>&1",
+                f"module load {_shell_quote(module_name)} >/dev/null 2>&1",
+                ogr_cmd,
             ]
         )
         cmd: list[str] = ["bash", "-lc", shell_script]
