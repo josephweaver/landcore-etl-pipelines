@@ -1,0 +1,25 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/yanroy/db_fields.yml
+  - ../tiger/county.yml
+vars:
+  dataset_id: stage.yanroy_tile_field_fips_v1
+  name: yanroy_field_fips
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  yanroy_dir: "{env.basedir}/data/yanroy"
+  outdir: "{yanroy_dir}/field_fips"
+  field_boundary_path: "{yanroy_dir}/db/field_boundary.gpkg"
+  county_path: "{env.basedir}/data/tiger/county/extract/tl_2025_us_county.shp"
+  output_csv: "{outdir}/yanroy_tile_field_fips.csv"
+  summary_json: "{outdir}/yanroy_tile_field_fips.summary.json"
+  field_id_field: field_id
+  tile_field_id_field: legacy_tile_field_id
+steps:
+  - name: "{sys.step.NN}_assign_tile_field_fips"
+    plugin: exec_script
+    args:
+      script: scripts/yanroy/assign_field_fips.py
+      script_args: "--field-boundary-path \"{field_boundary_path}\" --county-path \"{county_path}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\" --field-id-field \"{field_id_field}\" --tile-field-id-field \"{tile_field_id_field}\" --output-tile-field-id-field \"tile_field_ID\" --verbose"
+      verbose: true
+    output_var: field_fips
