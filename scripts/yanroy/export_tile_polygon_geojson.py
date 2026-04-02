@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 
@@ -12,6 +13,27 @@ TILE_RE = re.compile(r"(?i)(h\d{2}v\d{2})")
 def _extract_tile_id(text: str) -> str:
     match = TILE_RE.search(str(text or ""))
     return match.group(1).lower() if match else ""
+
+
+def _normalize_field_id_text(value) -> str:
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except Exception:  # noqa: BLE001
+            pass
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        if math.isnan(value):
+            return ""
+        if value.is_integer():
+            return str(int(value))
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        return text.split(".", 1)[0]
+    return text
 
 
 def export_tile_polygon_geojson(
@@ -47,7 +69,8 @@ def export_tile_polygon_geojson(
     gdf["source_name"] = input_vector.name
     gdf["tile_id"] = tile_id
     gdf["tile_coord"] = tile_id
-    gdf["tile_field_id"] = gdf[field_id_field].map(lambda value: f"{tile_id}_{str(value).strip()}" if str(value).strip() else "")
+    gdf[field_id_field] = gdf[field_id_field].map(_normalize_field_id_text)
+    gdf["tile_field_id"] = gdf[field_id_field].map(lambda value: f"{tile_id}_{value}" if value else "")
 
     reproj = gdf.to_crs(target_crs)
     keep_cols = [c for c in ["tile_field_id", "tile_id", field_id_field, "tile_coord", "source_name", "geometry"] if c in reproj.columns]

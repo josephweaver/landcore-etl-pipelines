@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 
@@ -20,6 +21,27 @@ def _normalize_text(value) -> str:
         except Exception:  # noqa: BLE001
             pass
     return str(value or "").strip()
+
+
+def _normalize_field_id_text(value) -> str:
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except Exception:  # noqa: BLE001
+            pass
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        if math.isnan(value):
+            return ""
+        if value.is_integer():
+            return str(int(value))
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        return text.split(".", 1)[0]
+    return text
 
 
 def _extract_tile_id(source_name: str) -> str:
@@ -72,7 +94,7 @@ def main() -> int:
 
     for _, row in gdf.iterrows():
         source_name = _normalize_text(row.get(args.source_name_field))
-        field_id = _normalize_text(row.get(args.field_id_field))
+        field_id = _normalize_field_id_text(row.get(args.field_id_field))
         tile_id = _extract_tile_id(source_name)
         if not tile_id:
             missing_tile_rows += 1

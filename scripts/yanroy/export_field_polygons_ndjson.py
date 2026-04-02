@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,23 @@ def _to_scalar(value: Any):
         except Exception:  # noqa: BLE001
             return value
     return value
+
+
+def _normalize_field_id_text(value: Any) -> str:
+    value = _to_scalar(value)
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        if math.isnan(value):
+            return ""
+        if value.is_integer():
+            return str(int(value))
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    if re.fullmatch(r"[+-]?\d+\.0+", text):
+        return text.split(".", 1)[0]
+    return text
 
 
 def export_field_polygons_ndjson(
@@ -56,7 +74,7 @@ def export_field_polygons_ndjson(
                 continue
             props: dict[str, Any] = {}
             tile_value = _to_scalar(row.get(tile_field)) if tile_field in row else None
-            field_value = _to_scalar(row.get(field_field)) if field_field in row else None
+            field_value = _normalize_field_id_text(row.get(field_field)) if field_field in row else None
             id_value = _to_scalar(row.get(id_field)) if id_field in row else None
             source_value = _to_scalar(row.get(source_name_field)) if source_name_field in row else None
 
