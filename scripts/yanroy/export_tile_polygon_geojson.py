@@ -66,14 +66,20 @@ def export_tile_polygon_geojson(
     if gdf.crs is None:
         gdf = gdf.set_crs(source_crs, allow_override=True)
 
-    gdf["source_name"] = input_vector.name
-    gdf["tile_id"] = tile_id
-    gdf["tile_coord"] = tile_id
+    if "source_name" not in gdf.columns:
+        gdf["source_name"] = input_vector.name
+    else:
+        gdf["source_name"] = gdf["source_name"].map(lambda value: str(value).strip() if str(value).strip() else input_vector.name)
+    gdf["tile_id"] = gdf["tile_id"].map(lambda value: str(value).strip().lower() if str(value).strip() else tile_id) if "tile_id" in gdf.columns else tile_id
+    gdf["tile_coord"] = gdf["tile_coord"].map(lambda value: str(value).strip().lower() if str(value).strip() else tile_id) if "tile_coord" in gdf.columns else tile_id
     gdf[field_id_field] = gdf[field_id_field].map(_normalize_field_id_text)
     gdf["tile_field_id"] = gdf[field_id_field].map(lambda value: f"{tile_id}_{value}" if value else "")
 
     reproj = gdf.to_crs(target_crs)
-    keep_cols = [c for c in ["tile_field_id", "tile_id", field_id_field, "tile_coord", "source_name", "geometry"] if c in reproj.columns]
+    preferred = ["tile_field_id", "tile_id", field_id_field, "tile_coord", "source_name", "FIPS", "STATEFP", "COUNTYFP", "county", "county_name_lsad", "field_area", "overlap_area", "county_overlap_pct", "county_match_count"]
+    keep_cols = [c for c in preferred if c in reproj.columns]
+    keep_cols.extend([c for c in reproj.columns if c not in keep_cols and c != "geometry"])
+    keep_cols.append("geometry")
     reproj = reproj[keep_cols]
 
     output_dir.mkdir(parents=True, exist_ok=True)

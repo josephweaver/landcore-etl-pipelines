@@ -1,10 +1,12 @@
 project_id: land_core
 requires_pipelines:
   - filtered_rasters.yml
+  - ../tiger/county.yml
 vars:
   dataset_id: stage.yanroy_polygons_v1
   name: yanroy_polygons
   target_crs: EPSG:5070
+  tiles: "{project.tiles_of_interest}"
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
   yanroy_dir: "{env.basedir}/data/yanroy"
@@ -12,19 +14,24 @@ vars:
   metadir: "{yanroy_dir}/meta"
   polygon_dir: "{yanroy_dir}/polygons"
   polygon_glob: "{polygon_dir}/WELD_*_2010_field_segments.gpkg"
+  polygon_raw_dir: "{workdir}/raw_polygons"
+  polygon_clean_dir: "{workdir}/clean_polygons"
+  polygon_summary_dir: "{workdir}/polygon_summaries"
   polygon_combined_raw_path: "{polygon_dir}/field_polygons.raw.gpkg"
   polygon_combined_path: "{polygon_dir}/field_polygons.gpkg"
   polygon_combined_summary_json: "{workdir}/field_polygons.summary.json"
   filtered_states_5070_path: "{metadir}/states.of.interest.5070.gpkg"
+  county_path: "{env.basedir}/data/tiger/county/extract/tl_2025_us_county.shp"
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
 steps:
   - name: "{sys.step.NN}_polygonize_field_id_rasters"
     plugin: geo/geo_raster_polygonize
+    foreach: tiles
     args:
-      input_raster: "{item}"
-      output_path: "{polygon_dir}/{item_stem}.gpkg"
+      input_raster: "{filtereddir}/{item}/WELD_{item}_2010_field_segments"
+      output_path: "{polygon_raw_dir}/WELD_{item}_2010_field_segments.gpkg"
       value_field: field_id
       exclude_values: 0
       selector_path: "{filtered_states_5070_path}"
@@ -32,9 +39,25 @@ steps:
       target_crs: "{target_crs}"
       dissolve_by_value: true
       overwrite: true
-    foreach_glob: "{filtereddir}/**/WELD_*_2010_field_segments"
-    foreach_kind: files
     output_var: field_polygons
+  - name: "{sys.step.NN}_normalize_polygon_field_ids"
+    plugin: exec_script
+    foreach: tiles
+    args:
+      script: "scripts/yanroy/normalize_polygon_field_ids.py"
+      script_args: "--input-vector \"{polygon_raw_dir}/WELD_{item}_2010_field_segments.gpkg\" --output-vector \"{polygon_clean_dir}/WELD_{item}_2010_field_segments.gpkg\" --field-id-field field_id --summary-json \"{polygon_summary_dir}/{item}.field_id.summary.json\" --overwrite --verbose"
+      verbose: true
+    output_var: field_polygons_field_ids_normalized
+  - name: "{sys.step.NN}_assign_polygon_fips"
+    plugin: exec_script
+    foreach: tiles
+    args:
+      script: "scripts/yanroy/assign_polygon_fips.py"
+      script_args: "--input-vector \"{polygon_clean_dir}/WELD_{item}_2010_field_segments.gpkg\" --county-path \"{county_path}\" --output-vector \"{polygon_dir}/WELD_{item}_2010_field_segments.gpkg\" --summary-json \"{polygon_summary_dir}/{item}.fips.summary.json\" --tile \"{item}\" --field-id-field field_id --tile-id-field tile_id --tile-coord-field tile_coord --tile-field-id-field tile_field_id --overwrite --verbose"
+      verbose: true
+    resources:
+      foreach_max_concurrency: 8
+    output_var: field_polygons_fips_assigned
   - name: "{sys.step.NN}_combine_field_polygons"
     plugin: geo/geo_vector_combine
     args:
