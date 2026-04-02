@@ -1,0 +1,42 @@
+project_id: land_core
+requires_pipelines:
+  - polygons.yml
+
+vars:
+  dataset_id: serve.yanroy_field_polygons_geojson_v1
+  name: yanroy_geojson
+  target_crs: EPSG:4326
+  source_crs: EPSG:5070
+  tiles: "{project.tiles_of_interest}"
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  yanroy_dir: "{env.basedir}/data/yanroy"
+  polygon_dir: "{yanroy_dir}/polygons"
+  serve_dir: "{yanroy_dir}/serve"
+  output_geojson_dir: "{serve_dir}/geojson_tiles"
+  output_summary_dir: "{serve_dir}/geojson_tiles_summary"
+  field_id_field: field_id
+  upload_geojson_to_gdrive: false
+  gdrive_remote: gdrive
+  gdrive_dst_dir: Data/ETL/serve/yanroy-field-polygons-geojson
+
+steps:
+  - name: "{sys.step.NN}_export_tile_polygon_geojson"
+    plugin: exec_script
+    foreach: tiles
+    args:
+      script: "scripts/yanroy/export_tile_polygon_geojson.py"
+      script_args: "--input-vector \"{polygon_dir}/WELD_{item}_2010_field_segments.gpkg\" --output-dir \"{output_geojson_dir}\" --summary-json \"{output_summary_dir}/{item}.summary.json\" --field-id-field \"{field_id_field}\" --source-crs \"{source_crs}\" --target-crs \"{target_crs}\" --verbose"
+      verbose: true
+    output_var: tile_polygon_geojson
+
+  - name: "{sys.step.NN}_upload_geojson_dir_to_gdrive"
+    when: upload_geojson_to_gdrive
+    plugin: gdrive_upload
+    args:
+      remote: "{gdrive_remote}"
+      dst: "{gdrive_dst_dir}"
+      input_path: "{output_geojson_dir}"
+      no_clobber: false
+      verbose: true
+    output_var: tile_polygon_geojson_upload
