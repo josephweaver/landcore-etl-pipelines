@@ -64,10 +64,33 @@ def normalize_polygon_field_ids(
         raise FileExistsError(f"output vector exists and overwrite not requested: {output_vector}")
 
     gdf = gpd.read_file(input_vector)
-    if gdf.empty:
-        raise RuntimeError(f"input vector has no features: {input_vector}")
     if field_id_field not in gdf.columns:
-        raise RuntimeError(f"missing field id field: {field_id_field}")
+        if gdf.empty:
+            gdf[field_id_field] = pd.array([], dtype="Int64")
+        else:
+            raise RuntimeError(f"missing field id field: {field_id_field}")
+
+    if gdf.empty:
+        output_vector.parent.mkdir(parents=True, exist_ok=True)
+        if output_vector.exists() and overwrite:
+            output_vector.unlink()
+        gdf.to_file(output_vector, driver="GPKG")
+
+        result = {
+            "input_vector": input_vector.resolve().as_posix(),
+            "output_vector": output_vector.resolve().as_posix(),
+            "field_id_field": field_id_field,
+            "row_count": 0,
+            "changed_rows": 0,
+            "output_type": "integer",
+            "empty_input": True,
+        }
+        if summary_json is not None:
+            summary_json.parent.mkdir(parents=True, exist_ok=True)
+            summary_json.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        if verbose:
+            print(json.dumps(result, indent=2))
+        return result
 
     raw_values = list(gdf[field_id_field].tolist())
     norm_values = [_normalize_field_id(value) for value in raw_values]
