@@ -59,23 +59,54 @@ def assign_polygon_fips(
         raise FileExistsError(f"output vector exists and overwrite not requested: {output_vector}")
 
     field_gdf = gpd.read_file(input_vector)
-    county_gdf = gpd.read_file(county_path)
+    tile_id = _to_text(tile).lower() or _extract_tile_id(input_vector.name)
+    if not tile_id:
+        raise RuntimeError(f"unable to determine tile id from tile arg or input name: {input_vector.name}")
+
+    if field_id_field not in field_gdf.columns:
+        if field_gdf.empty:
+            field_gdf[field_id_field] = pd.Series(dtype="object")
+        else:
+            raise RuntimeError(f"missing field id field: {field_id_field}")
+
     if field_gdf.empty:
-        raise RuntimeError("input vector is empty")
+        field_gdf = field_gdf.copy()
+        field_gdf[tile_id_field] = tile_id
+        field_gdf[tile_coord_field] = tile_id
+        field_gdf[tile_field_id_field] = pd.Series(dtype="object")
+        field_gdf["field_area"] = pd.Series(dtype="float64")
+        output_vector.parent.mkdir(parents=True, exist_ok=True)
+        summary_json.parent.mkdir(parents=True, exist_ok=True)
+        if output_vector.exists() and overwrite:
+            output_vector.unlink()
+        field_gdf.to_file(output_vector, driver="GPKG")
+
+        summary = {
+            "input_vector": input_vector.as_posix(),
+            "county_path": county_path.as_posix(),
+            "output_vector": output_vector.as_posix(),
+            "tile": tile_id,
+            "input_row_count": 0,
+            "intersection_row_count": 0,
+            "output_row_count": 0,
+            "ambiguous_field_count": 0,
+            "columns": [str(col) for col in field_gdf.columns],
+            "empty_input": True,
+        }
+        summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+        if verbose:
+            print(json.dumps(summary, indent=2))
+        return summary
+
+    county_gdf = gpd.read_file(county_path)
     if county_gdf.empty:
         raise RuntimeError("county dataset is empty")
     if field_gdf.crs is None:
         raise RuntimeError("input vector missing CRS")
     if county_gdf.crs is None:
         raise RuntimeError("county dataset missing CRS")
-    if field_id_field not in field_gdf.columns:
-        raise RuntimeError(f"missing field id field: {field_id_field}")
     if county_geoid_field not in county_gdf.columns:
         raise RuntimeError(f"county dataset missing required field: {county_geoid_field}")
-
-    tile_id = _to_text(tile).lower() or _extract_tile_id(input_vector.name)
-    if not tile_id:
-        raise RuntimeError(f"unable to determine tile id from tile arg or input name: {input_vector.name}")
 
     field_gdf = field_gdf[field_gdf.geometry.notna() & ~field_gdf.geometry.is_empty].copy()
     if field_gdf.empty:
