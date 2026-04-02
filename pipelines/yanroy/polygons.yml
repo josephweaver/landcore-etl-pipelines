@@ -14,6 +14,7 @@ vars:
   metadir: "{yanroy_dir}/meta"
   polygon_dir: "{yanroy_dir}/polygons"
   polygon_glob: "{polygon_dir}/WELD_*_2010_field_segments.gpkg"
+  polygon_tile_upload_dir: "{workdir}/polygon_tile_upload"
   polygon_raw_dir: "{workdir}/raw_polygons"
   polygon_clean_dir: "{workdir}/clean_polygons"
   polygon_summary_dir: "{workdir}/polygon_summaries"
@@ -22,6 +23,9 @@ vars:
   polygon_combined_summary_json: "{workdir}/field_polygons.summary.json"
   filtered_states_5070_path: "{metadir}/states.of.interest.5070.gpkg"
   county_path: "{env.basedir}/data/tiger/county/extract/tl_2025_us_county.shp"
+  upload_polygons_to_gdrive: true
+  gdrive_remote: gdrive
+  gdrive_dst_dir: Data/ETL/serve/yan-roy-polygons
 dirs:
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
@@ -55,9 +59,28 @@ steps:
       script: "scripts/yanroy/assign_polygon_fips.py"
       script_args: "--input-vector \"{polygon_clean_dir}/WELD_{item}_2010_field_segments.gpkg\" --county-path \"{county_path}\" --output-vector \"{polygon_dir}/WELD_{item}_2010_field_segments.gpkg\" --summary-json \"{polygon_summary_dir}/{item}.fips.summary.json\" --tile \"{item}\" --field-id-field field_id --tile-id-field tile_id --tile-coord-field tile_coord --tile-field-id-field tile_field_id --overwrite --verbose"
       verbose: true
-    resources:
-      foreach_max_concurrency: 8
     output_var: field_polygons_fips_assigned
+  - name: "{sys.step.NN}_stage_tile_polygon_gpkgs_for_gdrive"
+    when: upload_polygons_to_gdrive
+    plugin: file_copy_regex
+    args:
+      src: "{polygon_dir}"
+      dst: "{polygon_tile_upload_dir}"
+      pattern: "^WELD_h\\d{2}v\\d{2}_2010_field_segments\\.gpkg$"
+      match_on: filename
+      overwrite: true
+      verbose: true
+    output_var: tile_polygon_gpkg_upload_stage
+  - name: "{sys.step.NN}_upload_tile_polygon_gpkgs_to_gdrive"
+    when: upload_polygons_to_gdrive
+    plugin: gdrive_upload
+    args:
+      remote: "{gdrive_remote}"
+      dst: "{gdrive_dst_dir}"
+      input_path: "{polygon_tile_upload_dir}"
+      no_clobber: false
+      verbose: true
+    output_var: tile_polygon_gpkg_upload
   - name: "{sys.step.NN}_combine_field_polygons"
     plugin: geo/geo_vector_combine
     args:

@@ -7,18 +7,21 @@ vars:
   name: yanroy_geojson
   target_crs: EPSG:4326
   source_crs: EPSG:5070
+  simplify_tolerance: 0.00005
   tiles: "{project.tiles_of_interest}"
   workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
   logdir: "{workdir}/logs"
   yanroy_dir: "{env.basedir}/data/yanroy"
   polygon_dir: "{yanroy_dir}/polygons"
   serve_dir: "{yanroy_dir}/serve"
+  raw_geojson_dir: "{workdir}/raw_geojson_tiles"
   output_geojson_dir: "{serve_dir}/geojson_tiles"
   output_summary_dir: "{serve_dir}/geojson_tiles_summary"
+  simplify_summary_dir: "{serve_dir}/geojson_tiles_simplify_summary"
   field_id_field: field_id
-  upload_geojson_to_gdrive: false
+  upload_geojson_to_gdrive: true
   gdrive_remote: gdrive
-  gdrive_dst_dir: Data/ETL/serve/yanroy-field-polygons-geojson
+  gdrive_dst_dir: Data/ETL/serve/yanroy-geojson
 
 steps:
   - name: "{sys.step.NN}_export_tile_polygon_geojson"
@@ -26,9 +29,18 @@ steps:
     foreach: tiles
     args:
       script: "scripts/yanroy/export_tile_polygon_geojson.py"
-      script_args: "--input-vector \"{polygon_dir}/WELD_{item}_2010_field_segments.gpkg\" --output-dir \"{output_geojson_dir}\" --summary-json \"{output_summary_dir}/{item}.summary.json\" --field-id-field \"{field_id_field}\" --source-crs \"{source_crs}\" --target-crs \"{target_crs}\" --verbose"
+      script_args: "--input-vector \"{polygon_dir}/WELD_{item}_2010_field_segments.gpkg\" --output-dir \"{raw_geojson_dir}\" --summary-json \"{output_summary_dir}/{item}.summary.json\" --field-id-field \"{field_id_field}\" --source-crs \"{source_crs}\" --target-crs \"{target_crs}\" --verbose"
       verbose: true
     output_var: tile_polygon_geojson
+
+  - name: "{sys.step.NN}_simplify_tile_polygon_geojson"
+    plugin: exec_script
+    foreach: tiles
+    args:
+      script: "scripts/yanroy/simplify_geojson_geometry.py"
+      script_args: "--input-vector \"{raw_geojson_dir}/{item}.geojson\" --output-vector \"{output_geojson_dir}/{item}.geojson\" --tolerance \"{simplify_tolerance}\" --summary-json \"{simplify_summary_dir}/{item}.summary.json\" --preserve-topology --overwrite --verbose"
+      verbose: true
+    output_var: simplified_tile_polygon_geojson
 
   - name: "{sys.step.NN}_upload_geojson_dir_to_gdrive"
     when: upload_geojson_to_gdrive
