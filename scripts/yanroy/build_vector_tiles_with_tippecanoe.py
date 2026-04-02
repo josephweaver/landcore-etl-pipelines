@@ -21,9 +21,9 @@ def _run_tippecanoe(cmd: list[str]) -> tuple[str, str]:
 
 def build_vector_tiles_with_tippecanoe(
     input_ndjson: Path,
-    output_mbtiles: Path | None,
-    output_tiles_dir: Path | None,
     layer_name: str,
+    output_mbtiles: Path | None = None,
+    output_tiles_dir: Path | None = None,
     minimum_zoom: int = 8,
     maximum_zoom: int = 14,
     tippecanoe_bin: str = "tippecanoe",
@@ -31,6 +31,7 @@ def build_vector_tiles_with_tippecanoe(
     coalesce_densest_as_needed: bool = True,
     drop_densest_as_needed: bool = True,
     read_parallel: bool = True,
+    no_tile_compression: bool = True,
     overwrite: bool = True,
     verbose: bool = False,
 ) -> dict:
@@ -66,6 +67,8 @@ def build_vector_tiles_with_tippecanoe(
         base.append("--coalesce-densest-as-needed")
     if drop_densest_as_needed:
         base.append("--drop-densest-as-needed")
+    if no_tile_compression:
+        base.append("--no-tile-compression")
 
     commands: list[str] = []
     stdout_parts: list[str] = []
@@ -129,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--minimum-zoom", type=int, default=8)
     ap.add_argument("--maximum-zoom", type=int, default=14)
     ap.add_argument("--tippecanoe-bin", default="tippecanoe")
+    ap.add_argument("--tile-compression", choices=["compressed", "uncompressed"], default="uncompressed")
     ap.add_argument("--no-overwrite", action="store_true")
     ap.add_argument("--summary-json", default="")
     ap.add_argument("--verbose", action="store_true")
@@ -144,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
         minimum_zoom=int(args.minimum_zoom),
         maximum_zoom=int(args.maximum_zoom),
         tippecanoe_bin=str(args.tippecanoe_bin),
+        no_tile_compression=(str(args.tile_compression) == "uncompressed"),
         overwrite=(not bool(args.no_overwrite)),
         verbose=bool(args.verbose),
     )

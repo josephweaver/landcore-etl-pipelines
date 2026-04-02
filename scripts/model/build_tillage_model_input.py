@@ -134,54 +134,33 @@ def main() -> int:
             missing_fips += 1
             continue
 
-        annual_tillage = _to_annual_tillage(_to_text(tillage.get("dominant_tillage")))
         row = {
-            "tile_coord": _to_text(corn.get("tile_coord") or tillage.get("tile_coord") or fips.get("tile_coord")),
-            "field_ID": _to_text(corn.get("field_ID") or tillage.get("field_ID") or fips.get("yanroy_field_id")),
             "tile_field_ID": tile_field_id,
-            "FIPS": _to_text(fips.get("FIPS")),
-            "state": _to_text(fips.get("STATEFP")),
-            "county": _to_text(fips.get("county")),
+            "fips_code": _to_text(fips.get("FIPS")),
             "year": year,
-            "unscaled_yield": _to_text(corn.get("unscaled_yield")),
-            "annual_tillage": annual_tillage,
-            "dominant_tillage": _to_text(tillage.get("dominant_tillage")),
-            "NCCPI": _to_text(nccpi.get("nccpi3corn")),
-            "nccpi3corn": _to_text(nccpi.get("nccpi3corn")),
-            "nccpi3all": _to_text(nccpi.get("nccpi3all")),
-            "nccpi3soy": _to_text(nccpi.get("nccpi3soy")),
-            "vpdmax_7": _to_text(vpd.get("vpdmax_7")),
-            "vpdmax_8": _to_text(vpd.get("vpdmax_8")),
+            "corn_yield": _to_text(corn.get("unscaled_yield")),
             "tillage_0_prop": _to_text(tillage.get("tillage_0_prop")),
             "tillage_1_prop": _to_text(tillage.get("tillage_1_prop")),
-            "tillage_na_prop": _to_text(tillage.get("tillage_na_prop")),
+            "vpdmax7": _to_text(vpd.get("vpdmax_7")),
+            "vpdmax8": _to_text(vpd.get("vpdmax_8")),
+            "nccpi3corn": _to_text(nccpi.get("nccpi3corn")),
         }
-        required = ["FIPS", "year", "unscaled_yield", "annual_tillage", "NCCPI", "vpdmax_7"]
+        required = ["fips_code", "year", "corn_yield", "tillage_0_prop", "tillage_1_prop", "vpdmax7", "vpdmax8", "nccpi3corn"]
         if any(not _to_text(row.get(col)) for col in required):
             missing_required_value += 1
             continue
         output_rows.append(row)
 
     fieldnames = [
-        "tile_coord",
-        "field_ID",
         "tile_field_ID",
-        "FIPS",
-        "state",
-        "county",
+        "fips_code",
         "year",
-        "unscaled_yield",
-        "annual_tillage",
-        "dominant_tillage",
-        "NCCPI",
-        "nccpi3corn",
-        "nccpi3all",
-        "nccpi3soy",
-        "vpdmax_7",
-        "vpdmax_8",
+        "corn_yield",
         "tillage_0_prop",
         "tillage_1_prop",
-        "tillage_na_prop",
+        "vpdmax7",
+        "vpdmax8",
+        "nccpi3corn",
     ]
     with output_csv.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
