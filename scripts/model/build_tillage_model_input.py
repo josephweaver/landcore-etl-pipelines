@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -27,45 +29,12 @@ def _pick(row: dict[str, Any], *fields: str) -> str:
     return ""
 
 
-def _read_keyed_csv(
-    path: Path,
-    *,
-    key_fields: list[str],
-) -> tuple[list[dict[str, Any]], list[str]]:
-    if not path.exists():
-        raise FileNotFoundError(f"input csv not found: {path}")
-    with path.open("r", encoding="utf-8-sig", newline="") as f:
-        rdr = csv.DictReader(f)
-        if not rdr.fieldnames:
-            raise RuntimeError(f"input csv has no header: {path}")
-        fieldnames = [str(x) for x in rdr.fieldnames]
-        missing = [c for c in key_fields if c not in fieldnames]
-        if missing:
-            raise ValueError(f"input csv missing required key fields {missing}: {path}")
-        rows = [{str(k): v for k, v in (row or {}).items()} for row in rdr]
-    return rows, fieldnames
-
-
-def _index_rows(
-    rows: list[dict[str, Any]],
-    *,
-    key_fields: list[str],
-    label: str,
-) -> dict[tuple[str, ...], dict[str, Any]]:
-    indexed: dict[tuple[str, ...], dict[str, Any]] = {}
-    duplicates: list[tuple[str, ...]] = []
-    for row in rows:
-        key = tuple(_to_text(row.get(field)) for field in key_fields)
-        if any(not part for part in key):
-            continue
-        if key in indexed:
-            duplicates.append(key)
-            continue
-        indexed[key] = row
-    if duplicates:
-        preview = ", ".join(str(x) for x in duplicates[:5])
-        raise RuntimeError(f"{label} contains duplicate keys for {key_fields}: {preview}")
-    return indexed
+def _split_tile_field_id(value: str) -> tuple[str, str]:
+    text = _to_text(value)
+    if "_" not in text:
+        return "", ""
+    left, right = text.split("_", 1)
+    return left, right
 
 
 def _to_annual_tillage(value: str) -> str:
@@ -81,20 +50,101 @@ def _to_annual_tillage(value: str) -> str:
     return str(int(number))
 
 
-def _split_tile_field_id(value: str) -> tuple[str, str]:
-    text = _to_text(value)
-    if "_" not in text:
-        return "", ""
-    left, right = text.split("_", 1)
-    return left, right
+def _open_csv(path: Path) -> tuple[Any, csv.DictReader]:
+    handle = path.open("r", encoding="utf-8-sig", newline="")
+    reader = csv.DictReader(handle)
+    if not reader.fieldnames:
+        handle.close()
+        raise RuntimeError(f"input csv has no header: {path}")
+    return handle, reader
 
 
-def _year_sort_key(value: tuple[str, str]) -> tuple[str, int | str]:
-    tile_field_id, year = value
+def _require_fields(path: Path, fieldnames: list[str], required: list[str]) -> None:
+    missing = [field for field in required if field not in fieldnames]
+    if missing:
+        raise ValueError(f"input csv missing required fields {missing}: {path}")
+
+
+def _import_field_year_table(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    path: Path,
+    value_columns: dict[str, tuple[str, ...]],
+) -> int:
+    handle, reader = _open_csv(path)
     try:
-        return (tile_field_id, int(year))
-    except ValueError:
-        return (tile_field_id, year)
+        fieldnames = [str(x) for x in reader.fieldnames or []]
+        required = ["tile_field_ID", "year"]
+        fallback_fields = [choices[0] for choices in value_columns.values()]
+        _require_fields(path, fieldnames, required)
+        conn.execute(
+            f"""
+            CREATE TABLE {table} (
+              tile_field_ID TEXT NOT NULL,
+              year TEXT NOT NULL,
+              {", ".join(f"{column} TEXT" for column in value_columns)},
+              PRIMARY KEY (tile_field_ID, year)
+            )
+            """
+        )
+        insert_columns = ["tile_field_ID", "year", *value_columns.keys()]
+        insert_sql = f"INSERT INTO {table} ({', '.join(insert_columns)}) VALUES ({', '.join('?' for _ in insert_columns)})"
+        row_count = 0
+        for row in reader:
+            tile_field_id = _to_text(row.get("tile_field_ID"))
+            year = _to_text(row.get("year"))
+            if not tile_field_id or not year:
+                continue
+            values = [
+                _pick(row, *value_columns[column]) for column in value_columns
+            ]
+            try:
+                conn.execute(insert_sql, [tile_field_id, year, *values])
+            except sqlite3.IntegrityError as exc:
+                raise RuntimeError(f"{table} contains duplicate keys for ['tile_field_ID', 'year']: {(tile_field_id, year)}") from exc
+            row_count += 1
+        return row_count
+    finally:
+        handle.close()
+
+
+def _import_field_table(
+    conn: sqlite3.Connection,
+    *,
+    table: str,
+    path: Path,
+    key_field: str,
+    value_columns: dict[str, tuple[str, ...]],
+) -> int:
+    handle, reader = _open_csv(path)
+    try:
+        fieldnames = [str(x) for x in reader.fieldnames or []]
+        _require_fields(path, fieldnames, [key_field])
+        conn.execute(
+            f"""
+            CREATE TABLE {table} (
+              {key_field} TEXT NOT NULL PRIMARY KEY,
+              {", ".join(f"{column} TEXT" for column in value_columns)}
+            )
+            """
+        )
+        insert_columns = [key_field, *value_columns.keys()]
+        insert_sql = f"INSERT INTO {table} ({', '.join(insert_columns)}) VALUES ({', '.join('?' for _ in insert_columns)})"
+        row_count = 0
+        for row in reader:
+            key_value = _to_text(row.get(key_field))
+            if not key_value:
+                continue
+            values = [_pick(row, *value_columns[column]) for column in value_columns]
+            try:
+                conn.execute(insert_sql, [key_value, *values])
+            except sqlite3.IntegrityError as exc:
+                raise RuntimeError(f"{table} contains duplicate keys for ['{key_field}']: {key_value}") from exc
+            row_count += 1
+        return row_count
+    finally:
+        handle.close()
 
 
 def main() -> int:
@@ -119,81 +169,9 @@ def main() -> int:
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     summary_json.parent.mkdir(parents=True, exist_ok=True)
 
-    corn_rows, _ = _read_keyed_csv(corn_csv, key_fields=["tile_field_ID", "year"])
-    tillage_rows, _ = _read_keyed_csv(tillage_csv, key_fields=["tile_field_ID", "year"])
-    vpd_rows, _ = _read_keyed_csv(vpdmax_csv, key_fields=["tile_field_ID", "year"])
-    nccpi_rows, _ = _read_keyed_csv(nccpi_csv, key_fields=["tile_field_id"])
-    fips_rows, _ = _read_keyed_csv(field_fips_csv, key_fields=["tile_field_ID"])
-
-    corn_by_key = _index_rows(corn_rows, key_fields=["tile_field_ID", "year"], label="corn")
-    tillage_by_key = _index_rows(tillage_rows, key_fields=["tile_field_ID", "year"], label="tillage")
-    vpd_by_key = _index_rows(vpd_rows, key_fields=["tile_field_ID", "year"], label="vpdmax")
-    nccpi_by_key = _index_rows(nccpi_rows, key_fields=["tile_field_id"], label="nccpi")
-    fips_by_key = _index_rows(fips_rows, key_fields=["tile_field_ID"], label="field_fips")
-
-    output_rows: list[dict[str, Any]] = []
-    missing_tillage = 0
-    missing_vpd = 0
-    missing_nccpi = 0
-    missing_fips = 0
-    missing_annual_tillage = 0
-    missing_required_value = 0
-
-    for tile_field_id, year in sorted(corn_by_key.keys(), key=_year_sort_key):
-        corn = corn_by_key[(tile_field_id, year)]
-        tillage = tillage_by_key.get((tile_field_id, year))
-        if tillage is None:
-            missing_tillage += 1
-            continue
-        vpd = vpd_by_key.get((tile_field_id, year))
-        if vpd is None:
-            missing_vpd += 1
-            continue
-        nccpi = nccpi_by_key.get((tile_field_id,))
-        if nccpi is None:
-            missing_nccpi += 1
-            continue
-        fips = fips_by_key.get((tile_field_id,))
-        if fips is None:
-            missing_fips += 1
-            continue
-
-        annual_tillage = _to_annual_tillage(_pick(tillage, "dominant_tillage"))
-        if not annual_tillage:
-            missing_annual_tillage += 1
-            continue
-
-        tile_coord, field_id = _split_tile_field_id(tile_field_id)
-        row = {
-            "tile_field_ID": tile_field_id,
-            "tile_coord": tile_coord,
-            "field_ID": field_id,
-            "FIPS": _pick(fips, "FIPS", "fips_code"),
-            "state": _pick(fips, "STATEFP", "state"),
-            "county": _pick(fips, "county", "county_name_lsad"),
-            "year": year,
-            "unscaled_yield": _pick(corn, "unscaled_yield", "corn_yield"),
-            "annual_tillage": annual_tillage,
-            "NCCPI": _pick(nccpi, "NCCPI", "nccpi3corn"),
-            "tillage_0_prop": _to_text(tillage.get("tillage_0_prop")),
-            "tillage_1_prop": _to_text(tillage.get("tillage_1_prop")),
-            "vpdmax_7": _pick(vpd, "vpdmax_7", "vpdmax7"),
-            "vpdmax_8": _pick(vpd, "vpdmax_8", "vpdmax8"),
-            "nccpi3corn": _to_text(nccpi.get("nccpi3corn")),
-        }
-        required = [
-            "FIPS",
-            "year",
-            "unscaled_yield",
-            "annual_tillage",
-            "NCCPI",
-            "vpdmax_7",
-            "vpdmax_8",
-        ]
-        if any(not _to_text(row.get(col)) for col in required):
-            missing_required_value += 1
-            continue
-        output_rows.append(row)
+    for path in [corn_csv, tillage_csv, vpdmax_csv, nccpi_csv, field_fips_csv]:
+        if not path.exists():
+            raise FileNotFoundError(f"input csv not found: {path}")
 
     fieldnames = [
         "tile_field_ID",
@@ -212,12 +190,216 @@ def main() -> int:
         "vpdmax_8",
         "nccpi3corn",
     ]
-    with output_csv.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(output_rows)
 
-    duplicates = len(output_rows) - len({(r["tile_field_ID"], r["year"]) for r in output_rows})
+    with tempfile.TemporaryDirectory(prefix="tillage_model_input_", dir=str(summary_json.parent)) as temp_dir:
+        db_path = Path(temp_dir) / "join.sqlite3"
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("PRAGMA journal_mode = WAL")
+            conn.execute("PRAGMA synchronous = OFF")
+            conn.execute("PRAGMA temp_store = FILE")
+            conn.execute("PRAGMA cache_size = -200000")
+
+            corn_row_count = _import_field_year_table(
+                conn,
+                table="corn",
+                path=corn_csv,
+                value_columns={"unscaled_yield": ("unscaled_yield", "corn_yield")},
+            )
+            tillage_row_count = _import_field_year_table(
+                conn,
+                table="tillage",
+                path=tillage_csv,
+                value_columns={
+                    "dominant_tillage": ("dominant_tillage",),
+                    "tillage_0_prop": ("tillage_0_prop",),
+                    "tillage_1_prop": ("tillage_1_prop",),
+                },
+            )
+            vpd_row_count = _import_field_year_table(
+                conn,
+                table="vpd",
+                path=vpdmax_csv,
+                value_columns={
+                    "vpdmax_7": ("vpdmax_7", "vpdmax7"),
+                    "vpdmax_8": ("vpdmax_8", "vpdmax8"),
+                },
+            )
+            nccpi_row_count = _import_field_table(
+                conn,
+                table="nccpi",
+                path=nccpi_csv,
+                key_field="tile_field_id",
+                value_columns={
+                    "NCCPI": ("NCCPI", "nccpi3corn"),
+                    "nccpi3corn": ("nccpi3corn",),
+                },
+            )
+            field_fips_row_count = _import_field_table(
+                conn,
+                table="fips",
+                path=field_fips_csv,
+                key_field="tile_field_ID",
+                value_columns={
+                    "FIPS": ("FIPS", "fips_code"),
+                    "state": ("STATEFP", "state"),
+                    "county": ("county", "county_name_lsad"),
+                },
+            )
+            conn.commit()
+
+            missing_tillage = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM corn c
+                LEFT JOIN tillage t
+                  ON t.tile_field_ID = c.tile_field_ID
+                 AND t.year = c.year
+                WHERE t.tile_field_ID IS NULL
+                """
+            ).fetchone()[0]
+            missing_vpd = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM corn c
+                JOIN tillage t
+                  ON t.tile_field_ID = c.tile_field_ID
+                 AND t.year = c.year
+                LEFT JOIN vpd v
+                  ON v.tile_field_ID = c.tile_field_ID
+                 AND v.year = c.year
+                WHERE v.tile_field_ID IS NULL
+                """
+            ).fetchone()[0]
+            missing_nccpi = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM corn c
+                JOIN tillage t
+                  ON t.tile_field_ID = c.tile_field_ID
+                 AND t.year = c.year
+                JOIN vpd v
+                  ON v.tile_field_ID = c.tile_field_ID
+                 AND v.year = c.year
+                LEFT JOIN nccpi n
+                  ON n.tile_field_id = c.tile_field_ID
+                WHERE n.tile_field_id IS NULL
+                """
+            ).fetchone()[0]
+            missing_fips = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM corn c
+                JOIN tillage t
+                  ON t.tile_field_ID = c.tile_field_ID
+                 AND t.year = c.year
+                JOIN vpd v
+                  ON v.tile_field_ID = c.tile_field_ID
+                 AND v.year = c.year
+                JOIN nccpi n
+                  ON n.tile_field_id = c.tile_field_ID
+                LEFT JOIN fips f
+                  ON f.tile_field_ID = c.tile_field_ID
+                WHERE f.tile_field_ID IS NULL
+                """
+            ).fetchone()[0]
+
+            missing_annual_tillage = 0
+            missing_required_value = 0
+            output_row_count = 0
+
+            with output_csv.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                cursor = conn.execute(
+                    """
+                    SELECT
+                      c.tile_field_ID,
+                      c.year,
+                      c.unscaled_yield,
+                      t.dominant_tillage,
+                      t.tillage_0_prop,
+                      t.tillage_1_prop,
+                      v.vpdmax_7,
+                      v.vpdmax_8,
+                      n.NCCPI,
+                      n.nccpi3corn,
+                      f.FIPS,
+                      f.state,
+                      f.county
+                    FROM corn c
+                    JOIN tillage t
+                      ON t.tile_field_ID = c.tile_field_ID
+                     AND t.year = c.year
+                    JOIN vpd v
+                      ON v.tile_field_ID = c.tile_field_ID
+                     AND v.year = c.year
+                    JOIN nccpi n
+                      ON n.tile_field_id = c.tile_field_ID
+                    JOIN fips f
+                      ON f.tile_field_ID = c.tile_field_ID
+                    ORDER BY c.tile_field_ID, c.year
+                    """
+                )
+                for raw_row in cursor:
+                    (
+                        tile_field_id,
+                        year,
+                        unscaled_yield,
+                        dominant_tillage,
+                        tillage_0_prop,
+                        tillage_1_prop,
+                        vpdmax_7,
+                        vpdmax_8,
+                        nccpi_value,
+                        nccpi3corn,
+                        fips,
+                        state,
+                        county,
+                    ) = raw_row
+                    annual_tillage = _to_annual_tillage(_to_text(dominant_tillage))
+                    if not annual_tillage:
+                        missing_annual_tillage += 1
+                        continue
+                    tile_coord, field_id = _split_tile_field_id(_to_text(tile_field_id))
+                    out_row = {
+                        "tile_field_ID": _to_text(tile_field_id),
+                        "tile_coord": tile_coord,
+                        "field_ID": field_id,
+                        "FIPS": _to_text(fips),
+                        "state": _to_text(state),
+                        "county": _to_text(county),
+                        "year": _to_text(year),
+                        "unscaled_yield": _to_text(unscaled_yield),
+                        "annual_tillage": annual_tillage,
+                        "NCCPI": _to_text(nccpi_value),
+                        "tillage_0_prop": _to_text(tillage_0_prop),
+                        "tillage_1_prop": _to_text(tillage_1_prop),
+                        "vpdmax_7": _to_text(vpdmax_7),
+                        "vpdmax_8": _to_text(vpdmax_8),
+                        "nccpi3corn": _to_text(nccpi3corn),
+                    }
+                    required = ["FIPS", "year", "unscaled_yield", "annual_tillage", "NCCPI", "vpdmax_7", "vpdmax_8"]
+                    if any(not _to_text(out_row.get(column)) for column in required):
+                        missing_required_value += 1
+                        continue
+                    writer.writerow(out_row)
+                    output_row_count += 1
+
+            duplicates = conn.execute(
+                """
+                SELECT COUNT(*)
+                FROM (
+                  SELECT tile_field_ID, year, COUNT(*) AS n
+                  FROM corn
+                  GROUP BY tile_field_ID, year
+                  HAVING n > 1
+                )
+                """
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
     summary = {
         "corn_csv": corn_csv.as_posix(),
         "tillage_csv": tillage_csv.as_posix(),
@@ -225,12 +407,12 @@ def main() -> int:
         "nccpi_csv": nccpi_csv.as_posix(),
         "field_fips_csv": field_fips_csv.as_posix(),
         "output_csv": output_csv.as_posix(),
-        "corn_row_count": len(corn_rows),
-        "tillage_row_count": len(tillage_rows),
-        "vpd_row_count": len(vpd_rows),
-        "nccpi_row_count": len(nccpi_rows),
-        "field_fips_row_count": len(fips_rows),
-        "output_row_count": len(output_rows),
+        "corn_row_count": corn_row_count,
+        "tillage_row_count": tillage_row_count,
+        "vpd_row_count": vpd_row_count,
+        "nccpi_row_count": nccpi_row_count,
+        "field_fips_row_count": field_fips_row_count,
+        "output_row_count": output_row_count,
         "duplicate_tile_field_year_rows": duplicates,
         "missing_tillage_rows": missing_tillage,
         "missing_vpd_rows": missing_vpd,

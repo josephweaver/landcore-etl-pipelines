@@ -35,9 +35,9 @@ vars:
     - 2019
     - 2020
   tile_years: "{expr.product(tiles, years)}"
-  per_year_raster_dir: "{workdir}/by_year_raster"
-  per_tile_year_csv_dir: "{workdir}/by_tile_year_csv"
-  combined_raw_csv: "{workdir}/lobell_corn_yanroy_field_year.raw.csv"
+  per_year_raster_dir: "{lobell_dir}/by_year_raster"
+  per_tile_year_csv_dir: "{lobell_dir}/by_tile_year_csv"
+  combined_raw_csv: "{lobell_dir}/lobell_corn_yanroy_field_year.raw.csv"
   output_csv: "{lobell_dir}/lobell_corn_yanroy_field_year.csv"
   summary_json: "{lobell_dir}/lobell_corn_yanroy_field_year.summary.json"
 

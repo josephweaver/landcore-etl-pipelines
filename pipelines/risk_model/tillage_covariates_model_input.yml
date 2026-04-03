@@ -27,4 +27,6 @@ steps:
       script: scripts/model/build_tillage_model_input.py
       script_args: "--corn-csv \"{corn_csv}\" --tillage-csv \"{tillage_csv}\" --vpdmax-csv \"{vpdmax_csv}\" --nccpi-csv \"{nccpi_csv}\" --field-fips-csv \"{field_fips_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\" --verbose"
       verbose: true
+    resources:
+      mem: "16G"
     output_var: tillage_model_input
