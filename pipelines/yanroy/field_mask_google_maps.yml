@@ -1,0 +1,99 @@
+project_id: land_core
+requires_pipelines:
+  - filtered_rasters.yml
+
+vars:
+  dataset_id: serve.yanroy_field_mask_tiles_v1
+  name: yanroy_field_mask_google_maps
+  tiles: "{project.tiles_of_interest}"
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  yanroy_dir: "{env.basedir}/data/yanroy"
+  filtered_dir: "{yanroy_dir}/filtered"
+  serve_dir: "{yanroy_dir}/serve"
+  mask_tile_dir: "{workdir}/mask_tiles"
+  mask_tile_glob: "{mask_tile_dir}/WELD_*_2010_field_mask.tif"
+  serve_mask_mosaic: "{serve_dir}/field_mask.tif"
+  serve_mask_3857: "{serve_dir}/field_mask_3857.tif"
+  serve_tiles_dir: "{serve_dir}/field_mask_tiles"
+  serve_tiles_summary: "{serve_dir}/field_mask_tiles.summary.json"
+  serve_bundle_zip: "{serve_dir}/yanroy_field_mask_tiles.zip"
+  gdrive_remote: gdrive
+  gdrive_dst_dir: Data/ETL/serve/yan-roy-field-mask
+  upload_bundle_to_gdrive: true
+  target_crs: EPSG:3857
+  tile_min_zoom: 6
+  tile_max_zoom: 14
+  tile_size: 256
+
+steps:
+  - name: "{sys.step.NN}_build_binary_mask_tiles"
+    plugin: geo/geo_raster_value_mask
+    foreach: tiles
+    args:
+      input_raster: "{filtered_dir}/{item}/WELD_{item}_2010_field_segments"
+      output_path: "{mask_tile_dir}/WELD_{item}_2010_field_mask.tif"
+      include_values: "0"
+      invert: true
+      output_dtype: uint8
+      mask_true_value: 255
+      mask_false_value: 0
+      mask_nodata_value: 0
+      preserve_source_nodata: true
+      overwrite: true
+      compress: LZW
+      verbose: true
+    output_var: field_mask_tiles
+
+  - name: "{sys.step.NN}_combine_field_mask_tiles"
+    plugin: geo/geo_raster_combine
+    args:
+      input_glob: "{mask_tile_glob}"
+      output_path: "{serve_mask_mosaic}"
+      compress: LZW
+      overwrite: true
+      allow_empty: false
+      verbose: true
+    output_var: field_mask_mosaic
+
+  - name: "{sys.step.NN}_reproject_field_mask_to_web_mercator"
+    plugin: geo/geo_raster_reproject
+    args:
+      input_path: "{serve_mask_mosaic}"
+      output_path: "{serve_mask_3857}"
+      target_crs: "{target_crs}"
+      resampling: nearest
+      dst_nodata: "0"
+      compress: deflate
+      overwrite: true
+      verbose: true
+    output_var: field_mask_3857
+
+  - name: "{sys.step.NN}_build_google_maps_raster_tiles"
+    plugin: exec_script
+    args:
+      script: "scripts/yanroy/build_google_maps_raster_tiles.py"
+      script_args: "--input-raster \"{serve_mask_3857}\" --output-dir \"{serve_tiles_dir}\" --minimum-zoom {tile_min_zoom} --maximum-zoom {tile_max_zoom} --tile-size {tile_size} --nodata-value 0 --summary-json \"{serve_tiles_summary}\" --overwrite --verbose"
+      verbose: true
+    output_var: google_maps_raster_tiles
+
+  - name: "{sys.step.NN}_package_field_mask_tile_bundle_zip"
+    plugin: zip_create
+    args:
+      input_paths: "{serve_tiles_dir}"
+      output_zip: "{serve_bundle_zip}"
+      overwrite: true
+      compression: deflated
+      verbose: true
+    output_var: field_mask_bundle_zip
+
+  - name: "{sys.step.NN}_upload_field_mask_tile_bundle_to_gdrive"
+    when: upload_bundle_to_gdrive
+    plugin: gdrive_upload
+    args:
+      remote: "{gdrive_remote}"
+      dst: "{gdrive_dst_dir}"
+      input_path: "{serve_bundle_zip}"
+      no_clobber: false
+      verbose: true
+    output_var: field_mask_bundle_upload
