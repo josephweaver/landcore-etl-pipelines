@@ -47,8 +47,9 @@ def export_tile_polygon_geojson(
 ) -> dict:
     try:
         import geopandas as gpd
+        import pandas as pd
     except Exception as exc:  # noqa: BLE001
-        raise RuntimeError("export_tile_polygon_geojson requires geopandas") from exc
+        raise RuntimeError("export_tile_polygon_geojson requires geopandas and pandas") from exc
 
     if not input_vector.exists():
         raise FileNotFoundError(f"input vector not found: {input_vector}")
@@ -58,8 +59,51 @@ def export_tile_polygon_geojson(
         raise RuntimeError(f"unable to determine tile id from input name: {input_vector.name}")
 
     gdf = gpd.read_file(input_vector)
+    if field_id_field not in gdf.columns:
+        if gdf.empty:
+            gdf[field_id_field] = pd.Series(dtype="object")
+        else:
+            raise RuntimeError(f"missing field id field: {field_id_field}")
+
     if gdf.empty:
-        raise RuntimeError(f"input vector has no features: {input_vector}")
+        if gdf.crs is None:
+            gdf = gdf.set_crs(source_crs, allow_override=True)
+        gdf = gdf.copy()
+        gdf["source_name"] = input_vector.name
+        gdf["tile_id"] = tile_id
+        gdf["tile_coord"] = tile_id
+        gdf[field_id_field] = pd.Series(dtype="object")
+        gdf["tile_field_id"] = pd.Series(dtype="object")
+
+        reproj = gdf.to_crs(target_crs)
+        preferred = ["tile_field_id", "tile_id", field_id_field, "tile_coord", "source_name", "FIPS", "STATEFP", "COUNTYFP", "county", "county_name_lsad", "field_area", "overlap_area", "county_overlap_pct", "county_match_count"]
+        keep_cols = [c for c in preferred if c in reproj.columns]
+        keep_cols.extend([c for c in reproj.columns if c not in keep_cols and c != "geometry"])
+        keep_cols.append("geometry")
+        reproj = reproj[keep_cols]
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{tile_id}.geojson"
+        if output_path.exists():
+            output_path.unlink()
+        reproj.to_file(output_path, driver="GeoJSON")
+
+        result = {
+            "input_vector": input_vector.resolve().as_posix(),
+            "output_geojson": output_path.resolve().as_posix(),
+            "tile_id": tile_id,
+            "row_count": 0,
+            "target_crs": target_crs,
+            "columns": [str(col) for col in reproj.columns],
+            "empty_input": True,
+        }
+        if summary_json is not None:
+            summary_json.parent.mkdir(parents=True, exist_ok=True)
+            summary_json.write_text(json.dumps(result, indent=2), encoding="utf-8")
+        if verbose:
+            print(json.dumps(result, indent=2))
+        return result
+
     if field_id_field not in gdf.columns:
         raise RuntimeError(f"missing field id field: {field_id_field}")
 
