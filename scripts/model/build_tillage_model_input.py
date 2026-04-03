@@ -19,8 +19,12 @@ def _to_text(value: Any) -> str:
     return str(value).strip()
 
 
-def _key_tile_year(row: dict[str, Any]) -> tuple[str, str]:
-    return (_to_text(row.get("tile_field_ID")), _to_text(row.get("year")))
+def _pick(row: dict[str, Any], *fields: str) -> str:
+    for field in fields:
+        value = _to_text(row.get(field))
+        if value:
+            return value
+    return ""
 
 
 def _read_keyed_csv(
@@ -69,9 +73,28 @@ def _to_annual_tillage(value: str) -> str:
     if raw == "":
         return ""
     try:
-        return str(float(raw))
+        number = float(raw)
     except ValueError as exc:
         raise ValueError(f"dominant_tillage is not numeric 0/1: {raw}") from exc
+    if number not in (0.0, 1.0):
+        raise ValueError(f"dominant_tillage is not numeric 0/1: {raw}")
+    return str(int(number))
+
+
+def _split_tile_field_id(value: str) -> tuple[str, str]:
+    text = _to_text(value)
+    if "_" not in text:
+        return "", ""
+    left, right = text.split("_", 1)
+    return left, right
+
+
+def _year_sort_key(value: tuple[str, str]) -> tuple[str, int | str]:
+    tile_field_id, year = value
+    try:
+        return (tile_field_id, int(year))
+    except ValueError:
+        return (tile_field_id, year)
 
 
 def main() -> int:
@@ -113,9 +136,10 @@ def main() -> int:
     missing_vpd = 0
     missing_nccpi = 0
     missing_fips = 0
+    missing_annual_tillage = 0
     missing_required_value = 0
 
-    for tile_field_id, year in sorted(corn_by_key.keys(), key=lambda x: (x[0], int(x[1]))):
+    for tile_field_id, year in sorted(corn_by_key.keys(), key=_year_sort_key):
         corn = corn_by_key[(tile_field_id, year)]
         tillage = tillage_by_key.get((tile_field_id, year))
         if tillage is None:
@@ -134,18 +158,38 @@ def main() -> int:
             missing_fips += 1
             continue
 
+        annual_tillage = _to_annual_tillage(_pick(tillage, "dominant_tillage"))
+        if not annual_tillage:
+            missing_annual_tillage += 1
+            continue
+
+        tile_coord, field_id = _split_tile_field_id(tile_field_id)
         row = {
             "tile_field_ID": tile_field_id,
-            "fips_code": _to_text(fips.get("FIPS")),
+            "tile_coord": tile_coord,
+            "field_ID": field_id,
+            "FIPS": _pick(fips, "FIPS", "fips_code"),
+            "state": _pick(fips, "STATEFP", "state"),
+            "county": _pick(fips, "county", "county_name_lsad"),
             "year": year,
-            "corn_yield": _to_text(corn.get("unscaled_yield")),
+            "unscaled_yield": _pick(corn, "unscaled_yield", "corn_yield"),
+            "annual_tillage": annual_tillage,
+            "NCCPI": _pick(nccpi, "NCCPI", "nccpi3corn"),
             "tillage_0_prop": _to_text(tillage.get("tillage_0_prop")),
             "tillage_1_prop": _to_text(tillage.get("tillage_1_prop")),
-            "vpdmax7": _to_text(vpd.get("vpdmax_7")),
-            "vpdmax8": _to_text(vpd.get("vpdmax_8")),
+            "vpdmax_7": _pick(vpd, "vpdmax_7", "vpdmax7"),
+            "vpdmax_8": _pick(vpd, "vpdmax_8", "vpdmax8"),
             "nccpi3corn": _to_text(nccpi.get("nccpi3corn")),
         }
-        required = ["fips_code", "year", "corn_yield", "tillage_0_prop", "tillage_1_prop", "vpdmax7", "vpdmax8", "nccpi3corn"]
+        required = [
+            "FIPS",
+            "year",
+            "unscaled_yield",
+            "annual_tillage",
+            "NCCPI",
+            "vpdmax_7",
+            "vpdmax_8",
+        ]
         if any(not _to_text(row.get(col)) for col in required):
             missing_required_value += 1
             continue
@@ -153,13 +197,19 @@ def main() -> int:
 
     fieldnames = [
         "tile_field_ID",
-        "fips_code",
+        "tile_coord",
+        "field_ID",
+        "FIPS",
+        "state",
+        "county",
         "year",
-        "corn_yield",
+        "unscaled_yield",
+        "annual_tillage",
+        "NCCPI",
         "tillage_0_prop",
         "tillage_1_prop",
-        "vpdmax7",
-        "vpdmax8",
+        "vpdmax_7",
+        "vpdmax_8",
         "nccpi3corn",
     ]
     with output_csv.open("w", encoding="utf-8", newline="") as f:
@@ -186,6 +236,7 @@ def main() -> int:
         "missing_vpd_rows": missing_vpd,
         "missing_nccpi_rows": missing_nccpi,
         "missing_fips_rows": missing_fips,
+        "missing_annual_tillage_rows": missing_annual_tillage,
         "missing_required_value_rows": missing_required_value,
     }
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
