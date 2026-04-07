@@ -51,4 +51,6 @@ steps:
       script: "{sys.projectdir}/scripts/prism/normalize_vpdmax_field_year.py"
       script_args: "--input-csv \"{combined_monthly_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
       verbose: true
+    resources:
+      mem: "24G"
     output_var: vpdmax_field_year
