@@ -11,15 +11,15 @@ vars:
   name: prism_vpdmax_field_aggregate
   outdir: "{env.basedir}/data/prism/vpdmax"
   prism_dir: "{env.basedir}/data/prism/vpdmax/monthly/raw"
-  yanroy_polygons_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
-  raster_glob: "{prism_dir}/**/*vpdmax*20????*.tif"
+  yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
+  tiles: "{project.tiles_of_interest}"
   year_month_regex: "(20\\d{2}(0[1-9]|1[0-2]))"
-  per_raster_outdir: "{workdir}/by_raster"
+  per_tile_outdir: "{workdir}/by_tile"
+  per_tile_csv_glob: "{per_tile_outdir}/*.csv"
   combined_monthly_csv: "{workdir}/vpdmax_tile_field_monthly.csv"
   output_csv: "{outdir}/vpdmax_field_year.csv"
   summary_json: "{outdir}/vpdmax_field_year.summary.json"
   value_prefix: vpdmax
-  aggregations: "mean,max"
   tile_field_id_field: tile_field_id
 
 dirs:
@@ -27,27 +27,19 @@ dirs:
   logdir: "{workdir}/logs"
 
 steps:
-  - name: "{sys.step.NN}_aggregate_each_vpdmax_raster"
-    plugin: geo/raster_aggregate_by_polygon
+  - name: "{sys.step.NN}_aggregate_vpdmax_by_tile"
+    plugin: exec_script
     args:
-      raster_path: "{item}"
-      polygon_path: "{yanroy_polygons_path}"
-      output_path: "{per_raster_outdir}/{item_stem}.csv"
-      polygon_id_field: "field_id"
-      polygon_name_field: "source_name"
-      aggregations: "{aggregations}"
-      value_prefix: "{value_prefix}"
-      day_from_filename_regex: "{year_month_regex}"
-      day_from_filename_group: 1
+      script: "{sys.projectdir}/scripts/prism/aggregate_vpdmax_by_tile.py"
+      script_args: "--tile \"{item}\" --prism-dir \"{prism_dir}\" --polygon-path \"{yanroy_polygon_dir}/WELD_{item}_2010_field_segments.gpkg\" --output-csv \"{per_tile_outdir}/{item}.csv\" --summary-json \"{per_tile_outdir}/{item}.summary.json\" --polygon-id-field field_id --polygon-name-field source_name --day-from-filename-regex \"{year_month_regex}\" --day-from-filename-group 1 --value-prefix \"{value_prefix}\" --verbose"
       verbose: true
-    foreach_glob: "{raster_glob}"
-    foreach_kind: files
+    foreach: tiles
     output_var: raster_stats
 
   - name: "{sys.step.NN}_combine_vpdmax_monthly_stats"
     plugin: combine_files
     args:
-      input_glob: "{per_raster_outdir}/*.csv"
+      input_glob: "{per_tile_csv_glob}"
       output_file: "{combined_monthly_csv}"
       format: csv
       verbose: true
@@ -56,7 +48,7 @@ steps:
   - name: "{sys.step.NN}_normalize_vpdmax_field_year"
     plugin: exec_script
     args:
-      script: scripts/prism/normalize_vpdmax_field_year.py
+      script: "{sys.projectdir}/scripts/prism/normalize_vpdmax_field_year.py"
       script_args: "--input-csv \"{combined_monthly_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
       verbose: true
     output_var: vpdmax_field_year
