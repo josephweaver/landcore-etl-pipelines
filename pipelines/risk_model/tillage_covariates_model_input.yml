@@ -17,9 +17,11 @@ vars:
   vpdmax_csv: "{env.basedir}/data/prism/vpdmax/vpdmax_field_year.csv"
   nccpi_csv: "{env.basedir}/data/ssurgo/yanroy_nccpi/tile_field_nccpi_weighted.csv"
   field_fips_csv: "{env.basedir}/data/yanroy/field_fips/yanroy_tile_field_fips.csv"
+  adjacency_csv: "{sys.projectdir}/assets/county_adjacency2010.csv"
   year_start: 2005
   year_end: 2016
-  output_csv: "{outdir}/tillage_covariates_v1.csv"
+  output_dir: "{outdir}/county_model_input"
+  manifest_csv: "{outdir}/county_model_input_manifest.csv"
   summary_json: "{outdir}/tillage_covariates_v1.summary.json"
 
 steps:
@@ -27,7 +29,7 @@ steps:
     plugin: exec_script
     args:
       script: scripts/model/build_tillage_model_input.py
-      script_args: "--corn-csv \"{corn_csv}\" --tillage-csv \"{tillage_csv}\" --vpdmax-csv \"{vpdmax_csv}\" --nccpi-csv \"{nccpi_csv}\" --field-fips-csv \"{field_fips_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\" --year-start {year_start} --year-end {year_end} --verbose"
+      script_args: "--corn-csv \"{corn_csv}\" --tillage-csv \"{tillage_csv}\" --vpdmax-csv \"{vpdmax_csv}\" --nccpi-csv \"{nccpi_csv}\" --field-fips-csv \"{field_fips_csv}\" --adjacency-csv \"{adjacency_csv}\" --output-dir \"{output_dir}\" --manifest-csv \"{manifest_csv}\" --summary-json \"{summary_json}\" --year-start {year_start} --year-end {year_end} --verbose"
       verbose: true
     resources:
       mem: "16G"

@@ -6,6 +6,7 @@ import csv
 import json
 import sqlite3
 import tempfile
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -166,14 +167,33 @@ def _import_field_table(
         handle.close()
 
 
+def _read_adjacency(path: Path) -> dict[str, list[str]]:
+    handle, reader = _open_csv(path)
+    try:
+        fieldnames = [str(x) for x in reader.fieldnames or []]
+        _require_fields(path, fieldnames, ["fipscounty", "fipsneighbor"])
+        neighbors: dict[str, set[str]] = defaultdict(set)
+        for row in reader:
+            focal = _to_text(row.get("fipscounty"))
+            neighbor = _to_text(row.get("fipsneighbor"))
+            if not focal or not neighbor:
+                continue
+            neighbors[focal].add(neighbor)
+        return {key: sorted(values) for key, values in neighbors.items()}
+    finally:
+        handle.close()
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Build a tillage MODEL_IN table from staged field-year covariates.")
+    ap = argparse.ArgumentParser(description="Build county neighborhood tillage MODEL_IN tables from staged field-year covariates.")
     ap.add_argument("--corn-csv", required=True)
     ap.add_argument("--tillage-csv", required=True)
     ap.add_argument("--vpdmax-csv", required=True)
     ap.add_argument("--nccpi-csv", required=True)
     ap.add_argument("--field-fips-csv", required=True)
-    ap.add_argument("--output-csv", required=True)
+    ap.add_argument("--adjacency-csv", required=True)
+    ap.add_argument("--output-dir", required=True)
+    ap.add_argument("--manifest-csv", required=True)
     ap.add_argument("--summary-json", required=True)
     ap.add_argument("--year-start", type=int, default=None)
     ap.add_argument("--year-end", type=int, default=None)
@@ -185,12 +205,15 @@ def main() -> int:
     vpdmax_csv = Path(str(args.vpdmax_csv)).expanduser().resolve()
     nccpi_csv = Path(str(args.nccpi_csv)).expanduser().resolve()
     field_fips_csv = Path(str(args.field_fips_csv)).expanduser().resolve()
-    output_csv = Path(str(args.output_csv)).expanduser().resolve()
+    adjacency_csv = Path(str(args.adjacency_csv)).expanduser().resolve()
+    output_dir = Path(str(args.output_dir)).expanduser().resolve()
+    manifest_csv = Path(str(args.manifest_csv)).expanduser().resolve()
     summary_json = Path(str(args.summary_json)).expanduser().resolve()
-    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    manifest_csv.parent.mkdir(parents=True, exist_ok=True)
     summary_json.parent.mkdir(parents=True, exist_ok=True)
 
-    for path in [corn_csv, tillage_csv, vpdmax_csv, nccpi_csv, field_fips_csv]:
+    for path in [corn_csv, tillage_csv, vpdmax_csv, nccpi_csv, field_fips_csv, adjacency_csv]:
         if not path.exists():
             raise FileNotFoundError(f"input csv not found: {path}")
 
@@ -333,85 +356,80 @@ def main() -> int:
 
             missing_annual_tillage = 0
             missing_required_value = 0
-            output_row_count = 0
-
-            with output_csv.open("w", encoding="utf-8", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                writer.writeheader()
-                cursor = conn.execute(
-                    """
-                    SELECT
-                      c.tile_field_ID,
-                      c.year,
-                      c.unscaled_yield,
-                      t.dominant_tillage,
-                      t.tillage_0_prop,
-                      t.tillage_1_prop,
-                      v.vpdmax_7,
-                      v.vpdmax_8,
-                      n.NCCPI,
-                      n.nccpi3corn,
-                      f.FIPS,
-                      f.state,
-                      f.county
-                    FROM corn c
-                    JOIN tillage t
-                      ON t.tile_field_ID = c.tile_field_ID
-                     AND t.year = c.year
-                    JOIN vpd v
-                      ON v.tile_field_ID = c.tile_field_ID
-                     AND v.year = c.year
-                    JOIN nccpi n
-                      ON n.tile_field_id = c.tile_field_ID
-                    JOIN fips f
-                      ON f.tile_field_ID = c.tile_field_ID
-                    ORDER BY c.tile_field_ID, c.year
-                    """
-                )
-                for raw_row in cursor:
-                    (
-                        tile_field_id,
-                        year,
-                        unscaled_yield,
-                        dominant_tillage,
-                        tillage_0_prop,
-                        tillage_1_prop,
-                        vpdmax_7,
-                        vpdmax_8,
-                        nccpi_value,
-                        nccpi3corn,
-                        fips,
-                        state,
-                        county,
-                    ) = raw_row
-                    annual_tillage = _to_annual_tillage(_to_text(dominant_tillage))
-                    if not annual_tillage:
-                        missing_annual_tillage += 1
-                        continue
-                    tile_coord, field_id = _split_tile_field_id(_to_text(tile_field_id))
-                    out_row = {
-                        "tile_field_ID": _to_text(tile_field_id),
-                        "tile_coord": tile_coord,
-                        "field_ID": field_id,
-                        "FIPS": _to_text(fips),
-                        "state": _to_text(state),
-                        "county": _to_text(county),
-                        "year": _to_text(year),
-                        "unscaled_yield": _to_text(unscaled_yield),
-                        "annual_tillage": annual_tillage,
-                        "NCCPI": _to_text(nccpi_value),
-                        "tillage_0_prop": _to_text(tillage_0_prop),
-                        "tillage_1_prop": _to_text(tillage_1_prop),
-                        "vpdmax_7": _to_text(vpdmax_7),
-                        "vpdmax_8": _to_text(vpdmax_8),
-                        "nccpi3corn": _to_text(nccpi3corn),
-                    }
-                    required = ["FIPS", "year", "unscaled_yield", "annual_tillage", "NCCPI", "vpdmax_7", "vpdmax_8"]
-                    if any(not _to_text(out_row.get(column)) for column in required):
-                        missing_required_value += 1
-                        continue
-                    writer.writerow(out_row)
-                    output_row_count += 1
+            joined_rows: list[dict[str, str]] = []
+            cursor = conn.execute(
+                """
+                SELECT
+                  c.tile_field_ID,
+                  c.year,
+                  c.unscaled_yield,
+                  t.dominant_tillage,
+                  t.tillage_0_prop,
+                  t.tillage_1_prop,
+                  v.vpdmax_7,
+                  v.vpdmax_8,
+                  n.NCCPI,
+                  n.nccpi3corn,
+                  f.FIPS,
+                  f.state,
+                  f.county
+                FROM corn c
+                JOIN tillage t
+                  ON t.tile_field_ID = c.tile_field_ID
+                 AND t.year = c.year
+                JOIN vpd v
+                  ON v.tile_field_ID = c.tile_field_ID
+                 AND v.year = c.year
+                JOIN nccpi n
+                  ON n.tile_field_id = c.tile_field_ID
+                JOIN fips f
+                  ON f.tile_field_ID = c.tile_field_ID
+                ORDER BY c.tile_field_ID, c.year
+                """
+            )
+            for raw_row in cursor:
+                (
+                    tile_field_id,
+                    year,
+                    unscaled_yield,
+                    dominant_tillage,
+                    tillage_0_prop,
+                    tillage_1_prop,
+                    vpdmax_7,
+                    vpdmax_8,
+                    nccpi_value,
+                    nccpi3corn,
+                    fips,
+                    state,
+                    county,
+                ) = raw_row
+                annual_tillage = _to_annual_tillage(_to_text(dominant_tillage))
+                if not annual_tillage:
+                    missing_annual_tillage += 1
+                    continue
+                tile_coord, field_id = _split_tile_field_id(_to_text(tile_field_id))
+                out_row = {
+                    "tile_field_ID": _to_text(tile_field_id),
+                    "tile_coord": tile_coord,
+                    "field_ID": field_id,
+                    "FIPS": _to_text(fips),
+                    "state": _to_text(state),
+                    "county": _to_text(county),
+                    "year": _to_text(year),
+                    "unscaled_yield": _to_text(unscaled_yield),
+                    "annual_tillage": annual_tillage,
+                    "NCCPI": _to_text(nccpi_value),
+                    "tillage_0_prop": _to_text(tillage_0_prop),
+                    "tillage_1_prop": _to_text(tillage_1_prop),
+                    "vpdmax_7": _to_text(vpdmax_7),
+                    "vpdmax_8": _to_text(vpdmax_8),
+                    "nccpi3corn": _to_text(nccpi3corn),
+                }
+                required = ["FIPS", "year", "unscaled_yield", "annual_tillage", "NCCPI", "vpdmax_7", "vpdmax_8"]
+                if any(not _to_text(out_row.get(column)) for column in required):
+                    missing_required_value += 1
+                    continue
+                joined_rows.append(out_row)
 
             duplicates = conn.execute(
                 """
@@ -427,13 +445,74 @@ def main() -> int:
         finally:
             conn.close()
 
+    adjacency = _read_adjacency(adjacency_csv)
+    joined_by_fips: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in joined_rows:
+        joined_by_fips[_to_text(row.get("FIPS"))].append(row)
+
+    focal_fips_values = sorted(set(joined_by_fips.keys()) & set(adjacency.keys()))
+    if not focal_fips_values:
+        focal_fips_values = sorted(joined_by_fips.keys())
+
+    manifest_rows: list[dict[str, Any]] = []
+    neighborhood_file_count = 0
+    neighborhood_row_count = 0
+    for focal_fips in focal_fips_values:
+        neighbor_fips = adjacency.get(focal_fips) or [focal_fips]
+        neighborhood_rows: list[dict[str, str]] = []
+        for neighbor in neighbor_fips:
+            neighborhood_rows.extend(joined_by_fips.get(neighbor, []))
+        if not neighborhood_rows:
+            continue
+        county_dir = output_dir / focal_fips
+        county_dir.mkdir(parents=True, exist_ok=True)
+        county_csv = county_dir / "county_data.csv"
+        county_summary_json = county_dir / "county_data.summary.json"
+        with county_csv.open("w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(neighborhood_rows)
+        year_values = sorted({int(_to_text(row.get("year"))) for row in neighborhood_rows if _to_text(row.get("year"))})
+        county_summary = {
+            "focal_fips": focal_fips,
+            "neighbor_fips": neighbor_fips,
+            "row_count": len(neighborhood_rows),
+            "year_min": min(year_values) if year_values else None,
+            "year_max": max(year_values) if year_values else None,
+            "output_csv": county_csv.as_posix(),
+        }
+        county_summary_json.write_text(json.dumps(county_summary, indent=2), encoding="utf-8")
+        manifest_rows.append(
+            {
+                "focal_fips": focal_fips,
+                "neighbor_count": len(neighbor_fips),
+                "row_count": len(neighborhood_rows),
+                "year_min": county_summary["year_min"] if county_summary["year_min"] is not None else "",
+                "year_max": county_summary["year_max"] if county_summary["year_max"] is not None else "",
+                "output_csv": county_csv.as_posix(),
+                "summary_json": county_summary_json.as_posix(),
+            }
+        )
+        neighborhood_file_count += 1
+        neighborhood_row_count += len(neighborhood_rows)
+
+    with manifest_csv.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=["focal_fips", "neighbor_count", "row_count", "year_min", "year_max", "output_csv", "summary_json"],
+        )
+        writer.writeheader()
+        writer.writerows(manifest_rows)
+
     summary = {
         "corn_csv": corn_csv.as_posix(),
         "tillage_csv": tillage_csv.as_posix(),
         "vpdmax_csv": vpdmax_csv.as_posix(),
         "nccpi_csv": nccpi_csv.as_posix(),
         "field_fips_csv": field_fips_csv.as_posix(),
-        "output_csv": output_csv.as_posix(),
+        "adjacency_csv": adjacency_csv.as_posix(),
+        "output_dir": output_dir.as_posix(),
+        "manifest_csv": manifest_csv.as_posix(),
         "year_start": int(args.year_start) if args.year_start is not None else None,
         "year_end": int(args.year_end) if args.year_end is not None else None,
         "corn_row_count": corn_row_count,
@@ -441,7 +520,9 @@ def main() -> int:
         "vpd_row_count": vpd_row_count,
         "nccpi_row_count": nccpi_row_count,
         "field_fips_row_count": field_fips_row_count,
-        "output_row_count": output_row_count,
+        "joined_row_count": len(joined_rows),
+        "neighborhood_file_count": neighborhood_file_count,
+        "neighborhood_row_count": neighborhood_row_count,
         "duplicate_tile_field_year_rows": duplicates,
         "missing_tillage_rows": missing_tillage,
         "missing_vpd_rows": missing_vpd,
