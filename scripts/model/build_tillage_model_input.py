@@ -65,12 +65,29 @@ def _require_fields(path: Path, fieldnames: list[str], required: list[str]) -> N
         raise ValueError(f"input csv missing required fields {missing}: {path}")
 
 
+def _year_in_range(year_text: str, *, year_start: int | None, year_end: int | None) -> bool:
+    text = _to_text(year_text)
+    if not text:
+        return False
+    try:
+        year = int(text)
+    except ValueError:
+        return False
+    if year_start is not None and year < int(year_start):
+        return False
+    if year_end is not None and year > int(year_end):
+        return False
+    return True
+
+
 def _import_field_year_table(
     conn: sqlite3.Connection,
     *,
     table: str,
     path: Path,
     value_columns: dict[str, tuple[str, ...]],
+    year_start: int | None = None,
+    year_end: int | None = None,
 ) -> int:
     handle, reader = _open_csv(path)
     try:
@@ -95,6 +112,8 @@ def _import_field_year_table(
             tile_field_id = _to_text(row.get("tile_field_ID"))
             year = _to_text(row.get("year"))
             if not tile_field_id or not year:
+                continue
+            if not _year_in_range(year, year_start=year_start, year_end=year_end):
                 continue
             values = [
                 _pick(row, *value_columns[column]) for column in value_columns
@@ -156,6 +175,8 @@ def main() -> int:
     ap.add_argument("--field-fips-csv", required=True)
     ap.add_argument("--output-csv", required=True)
     ap.add_argument("--summary-json", required=True)
+    ap.add_argument("--year-start", type=int, default=None)
+    ap.add_argument("--year-end", type=int, default=None)
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -205,6 +226,8 @@ def main() -> int:
                 table="corn",
                 path=corn_csv,
                 value_columns={"unscaled_yield": ("unscaled_yield", "corn_yield")},
+                year_start=args.year_start,
+                year_end=args.year_end,
             )
             tillage_row_count = _import_field_year_table(
                 conn,
@@ -215,6 +238,8 @@ def main() -> int:
                     "tillage_0_prop": ("tillage_0_prop",),
                     "tillage_1_prop": ("tillage_1_prop",),
                 },
+                year_start=args.year_start,
+                year_end=args.year_end,
             )
             vpd_row_count = _import_field_year_table(
                 conn,
@@ -224,6 +249,8 @@ def main() -> int:
                     "vpdmax_7": ("vpdmax_7", "vpdmax7"),
                     "vpdmax_8": ("vpdmax_8", "vpdmax8"),
                 },
+                year_start=args.year_start,
+                year_end=args.year_end,
             )
             nccpi_row_count = _import_field_table(
                 conn,
@@ -407,6 +434,8 @@ def main() -> int:
         "nccpi_csv": nccpi_csv.as_posix(),
         "field_fips_csv": field_fips_csv.as_posix(),
         "output_csv": output_csv.as_posix(),
+        "year_start": int(args.year_start) if args.year_start is not None else None,
+        "year_end": int(args.year_end) if args.year_end is not None else None,
         "corn_row_count": corn_row_count,
         "tillage_row_count": tillage_row_count,
         "vpd_row_count": vpd_row_count,

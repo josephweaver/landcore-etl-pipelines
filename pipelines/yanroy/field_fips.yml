@@ -18,7 +18,7 @@ vars:
   output_csv: "{outdir}/yanroy_tile_field_fips.csv"
   summary_json: "{outdir}/yanroy_tile_field_fips.summary.json"
   field_id_field: field_id
-  tile_field_id_field: legacy_tile_field_id
+  tile_field_id_field: tile_field_id
 steps:
   - name: "{sys.step.NN}_assign_tile_field_fips"
     plugin: exec_script
