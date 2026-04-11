@@ -16,7 +16,8 @@ if (length(args) < 2) {
     paste(
       "Usage:",
       "Rscript Neighborhood_fit_chkptstanr.R <data_csv> <checkpoint_dir>",
-      "[iter_warmup] [iter_sampling] [iter_per_chkpt] [chains] [seed] [stop_after] [reset]"
+      "[iter_warmup] [iter_sampling] [iter_per_chkpt] [chains] [seed] [stop_after] [reset]",
+      "[wall_clock_limit_seconds] [wall_clock_margin_seconds]"
     )
   )
 }
@@ -30,6 +31,8 @@ chains <- if (length(args) >= 6) as.integer(args[6]) else 2L
 seed <- if (length(args) >= 7) as.integer(args[7]) else 1234L
 stop_after <- if (length(args) >= 8 && nzchar(args[8])) as.integer(args[8]) else NULL
 reset <- if (length(args) >= 9) as.logical(as.integer(args[9])) else FALSE
+wall_clock_limit_seconds <- if (length(args) >= 10 && nzchar(args[10])) as.integer(args[10]) else NULL
+wall_clock_margin_seconds <- if (length(args) >= 11 && nzchar(args[11])) as.integer(args[11]) else 600L
 
 expected_checkpoints <- as.integer(ceiling((iter_warmup + iter_sampling) / iter_per_chkpt))
 status_file <- file.path(checkpoint_dir, "run_status.txt")
@@ -37,6 +40,22 @@ status_file <- file.path(checkpoint_dir, "run_status.txt")
 write_status <- function(status_text) {
   writeLines(status_text, status_file)
   message(status_text)
+}
+
+wall_clock_start <- Sys.time()
+wall_clock_deadline <- if (is.null(wall_clock_limit_seconds)) NULL else wall_clock_start + wall_clock_limit_seconds
+wall_clock_remaining <- function() {
+  if (is.null(wall_clock_deadline)) {
+    return(Inf)
+  }
+  as.numeric(difftime(wall_clock_deadline, Sys.time(), units = "secs"))
+}
+
+should_stop_for_time <- function() {
+  if (is.null(wall_clock_deadline)) {
+    return(FALSE)
+  }
+  wall_clock_remaining() <= wall_clock_margin_seconds
 }
 
 dir.create(checkpoint_dir, recursive = TRUE, showWarnings = FALSE)
@@ -74,20 +93,8 @@ priors_unscaled <- data.frame(
 
 this_scaling_factors <- data.frame(
   param = c("annual_RCI", "vpdmax_7", "vpdmax_8", "NCCPI", "year"),
-  mean = c(
-    mean(this_df$annual_RCI),
-    mean(this_df$vpdmax_7),
-    mean(this_df$vpdmax_8),
-    mean(this_df$NCCPI),
-    0
-  ),
-  sd = c(
-    sd(this_df$annual_RCI),
-    sd(this_df$vpdmax_7),
-    sd(this_df$vpdmax_8),
-    sd(this_df$NCCPI),
-    1
-  )
+  mean = c(mean(this_df$annual_RCI), mean(this_df$vpdmax_7), mean(this_df$vpdmax_8), mean(this_df$NCCPI), 0),
+  sd = c(sd(this_df$annual_RCI), sd(this_df$vpdmax_7), sd(this_df$vpdmax_8), sd(this_df$NCCPI), 1)
 )
 
 this_county_dat <- this_df %>%
@@ -121,9 +128,7 @@ for (i in seq_along(model_covars)) {
   if (this_cov %in% priors_unscaled$parameter) {
     ind <- which(priors_unscaled$parameter == this_cov)
     scaled_val <- priors_unscaled$linear_effect_yieldscale[ind] *
-      this_scaling_factors$sd[
-        this_scaling_factors$param == priors_unscaled$scalar_par[ind]
-      ]
+      this_scaling_factors$sd[this_scaling_factors$param == priors_unscaled$scalar_par[ind]]
     prior <- prior + prior_string(
       paste0("normal(", scaled_val, ",", abs(scaled_val), ")"),
       class = "b",
@@ -142,36 +147,63 @@ message(
   ", chains=", chains,
   ", seed=", seed,
   ", stop_after=", if (is.null(stop_after)) "NULL" else stop_after,
-  ", reset=", reset
+  ", reset=", reset,
+  ", wall_clock_limit_seconds=", if (is.null(wall_clock_limit_seconds)) "NULL" else wall_clock_limit_seconds,
+  ", wall_clock_margin_seconds=", wall_clock_margin_seconds
 )
 message("Expected checkpoints: ", expected_checkpoints)
 
-fit <- tryCatch(
-  chkptstanr::chkpt_brms(
-    formula = formula,
-    data = this_county_dat,
-    family = gaussian(),
-    prior = prior,
-    iter_adaptation = max(20L, min(150L, iter_per_chkpt)),
-    iter_warmup = iter_warmup,
-    iter_sampling = iter_sampling,
-    iter_per_chkpt = iter_per_chkpt,
-    parallel_chains = min(chains, 4L),
-    threads_per = 1L,
-    chkpt_progress = TRUE,
-    control = list(adapt_delta = 0.90, max_treedepth = 10),
-    seed = seed,
-    stop_after = stop_after,
-    reset = reset,
-    path = checkpoint_dir
-  ),
-  error = function(e) {
-    message("chkpt_brms error: ", conditionMessage(e))
-    NULL
+current_stop_after <- if (is.null(stop_after)) expected_checkpoints * iter_per_chkpt else stop_after
+fit <- NULL
+repeat {
+  if (should_stop_for_time()) {
+    message("Stopping before next checkpoint chunk to preserve wall-clock margin.")
+    break
   }
-)
+  next_stop_after <- min(current_stop_after, expected_checkpoints * iter_per_chkpt)
+  message(
+    "Starting chkpt_brms with stop_after=", next_stop_after,
+    ", wall_clock_remaining_seconds=", round(wall_clock_remaining(), 1)
+  )
+  fit <- tryCatch(
+    chkptstanr::chkpt_brms(
+      formula = formula,
+      data = this_county_dat,
+      family = gaussian(),
+      prior = prior,
+      iter_adaptation = max(20L, min(150L, iter_per_chkpt)),
+      iter_warmup = iter_warmup,
+      iter_sampling = iter_sampling,
+      iter_per_chkpt = iter_per_chkpt,
+      parallel_chains = min(chains, 4L),
+      threads_per = 1L,
+      chkpt_progress = TRUE,
+      control = list(adapt_delta = 0.90, max_treedepth = 10),
+      seed = seed,
+      stop_after = next_stop_after,
+      reset = reset,
+      path = checkpoint_dir
+    ),
+    error = function(e) {
+      message("chkpt_brms error: ", conditionMessage(e))
+      NULL
+    }
+  )
+  if (is.null(fit)) {
+    break
+  }
+  completed_checkpoints <- length(list.files(file.path(checkpoint_dir, "cp_info"), pattern = "^cp_info_[0-9]+\\.rds$", full.names = TRUE))
+  if (completed_checkpoints >= expected_checkpoints) {
+    break
+  }
+  if (should_stop_for_time()) {
+    break
+  }
+  current_stop_after <- min(current_stop_after + iter_per_chkpt, expected_checkpoints * iter_per_chkpt)
+}
 
-if (!is.null(fit)) {
+completed_checkpoints <- length(list.files(file.path(checkpoint_dir, "cp_info"), pattern = "^cp_info_[0-9]+\\.rds$", full.names = TRUE))
+if (!is.null(fit) && completed_checkpoints >= expected_checkpoints) {
   fit_rds <- file.path(checkpoint_dir, "fit.rds")
   fit_summary <- file.path(checkpoint_dir, "fit_summary.csv")
   saveRDS(fit, file = fit_rds)
