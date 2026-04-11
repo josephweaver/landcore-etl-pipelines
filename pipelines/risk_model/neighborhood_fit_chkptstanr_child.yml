@@ -12,7 +12,7 @@ vars:
   county_input_csv: "{county_fit_dir}/county_data.csv"
   checkpoint_dir: "{run_dir}/chkpt"
   output_model_rds: "{county_fit_dir}/output_model"
-  fit_script_path: "{sys.projectdir}/scripts/model/Neighborhood_fit_chkptstanr.R"
+  fit_script_path: "/mnt/gs21/scratch/weave151/etl/src/landcore-etl-pipelines/scripts/model/Neighborhood_fit_chkptstanr.R"
   rscript_bin: "Rscript"
   iter_warmup: 1000
   iter_sampling: 1000
