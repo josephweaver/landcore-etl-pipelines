@@ -22,6 +22,13 @@ def _to_text(value: Any) -> str:
     return str(value).strip()
 
 
+def _normalize_tile_field_id(value: Any) -> str:
+    text = _to_text(value)
+    if text.endswith(".0"):
+        text = text[:-2]
+    return text
+
+
 def _pick(row: dict[str, Any], *fields: str) -> str:
     for field in fields:
         value = _to_text(row.get(field))
@@ -110,7 +117,7 @@ def _import_field_year_table(
         insert_sql = f"INSERT INTO {table} ({', '.join(insert_columns)}) VALUES ({', '.join('?' for _ in insert_columns)})"
         row_count = 0
         for row in reader:
-            tile_field_id = _to_text(row.get("tile_field_ID"))
+            tile_field_id = _normalize_tile_field_id(row.get("tile_field_ID"))
             year = _to_text(row.get("year"))
             if not tile_field_id or not year:
                 continue
@@ -153,7 +160,7 @@ def _import_field_table(
         insert_sql = f"INSERT INTO {table} ({', '.join(insert_columns)}) VALUES ({', '.join('?' for _ in insert_columns)})"
         row_count = 0
         for row in reader:
-            key_value = _to_text(row.get(key_field))
+            key_value = _normalize_tile_field_id(row.get(key_field)) if key_field.lower() == "tile_field_id" else _to_text(row.get(key_field))
             if not key_value:
                 continue
             values = [_pick(row, *value_columns[column]) for column in value_columns]
@@ -174,8 +181,8 @@ def _read_adjacency(path: Path) -> dict[str, list[str]]:
         _require_fields(path, fieldnames, ["fipscounty", "fipsneighbor"])
         neighbors: dict[str, set[str]] = defaultdict(set)
         for row in reader:
-            focal = _to_text(row.get("fipscounty"))
-            neighbor = _to_text(row.get("fipsneighbor"))
+            focal = _normalize_tile_field_id(row.get("fipscounty"))
+            neighbor = _normalize_tile_field_id(row.get("fipsneighbor"))
             if not focal or not neighbor:
                 continue
             neighbors[focal].add(neighbor)
