@@ -75,40 +75,42 @@ set_cmdstan_path(cmdstan_path_to_use)
 this_df <- read_csv(dat_path, show_col_types = FALSE)
 
 model_covars <- c(
-  "mean_RCI",
-  "within_RCI",
-  "NCCPI",
+  "tillage_0_prop",
+  "tillage_1_prop",
+  "nccpi3corn",
   "vpdmax_7",
-  "within_RCI*vpdmax_7",
-  "mean_RCI*vpdmax_7",
-  "mean_RCI*NCCPI",
+  "tillage_0_prop*vpdmax_7",
+  "tillage_1_prop*vpdmax_7",
+  "tillage_0_prop*nccpi3corn",
+  "tillage_1_prop*nccpi3corn",
   "year"
 )
 
-priors_unscaled <- data.frame(
-  parameter = c("year", "within_RCI", "mean_RCI", "NCCPI", "vpdmax_7"),
-  scalar_par = c("year", "annual_RCI", "annual_RCI", "NCCPI", "vpdmax_7"),
-  linear_effect_yieldscale = c(15, 26, 26, 1150, -20)
-)
-
 this_scaling_factors <- data.frame(
-  param = c("annual_RCI", "vpdmax_7", "vpdmax_8", "NCCPI", "year"),
-  mean = c(mean(this_df$annual_RCI), mean(this_df$vpdmax_7), mean(this_df$vpdmax_8), mean(this_df$NCCPI), 0),
-  sd = c(sd(this_df$annual_RCI), sd(this_df$vpdmax_7), sd(this_df$vpdmax_8), sd(this_df$NCCPI), 1)
+  param = c("tillage_0_prop", "tillage_1_prop", "nccpi3corn", "vpdmax_7", "year"),
+  mean = c(
+    mean(this_df$tillage_0_prop),
+    mean(this_df$tillage_1_prop),
+    mean(this_df$nccpi3corn),
+    mean(this_df$vpdmax_7),
+    0
+  ),
+  sd = c(
+    sd(this_df$tillage_0_prop),
+    sd(this_df$tillage_1_prop),
+    sd(this_df$nccpi3corn),
+    sd(this_df$vpdmax_7),
+    1
+  )
 )
 
 this_county_dat <- this_df %>%
   mutate(
-    annual_RCI = as.numeric(scale(annual_RCI)),
+    tillage_0_prop = as.numeric(scale(tillage_0_prop)),
+    tillage_1_prop = as.numeric(scale(tillage_1_prop)),
+    nccpi3corn = as.numeric(scale(nccpi3corn)),
     vpdmax_7 = as.numeric(scale(vpdmax_7)),
-    vpdmax_8 = as.numeric(scale(vpdmax_8)),
-    NCCPI = as.numeric(scale(NCCPI)),
     year = as.numeric(year - 2010)
-  ) %>%
-  group_by(tile_field_ID) %>%
-  mutate(
-    mean_RCI = mean(annual_RCI),
-    within_RCI = annual_RCI - mean(annual_RCI)
   ) %>%
   ungroup()
 
@@ -125,15 +127,16 @@ formula <- brms::bf(
 prior <- prior_string("normal(2250,500)", class = "Intercept")
 for (i in seq_along(model_covars)) {
   this_cov <- model_covars[i]
-  if (this_cov %in% priors_unscaled$parameter) {
-    ind <- which(priors_unscaled$parameter == this_cov)
-    scaled_val <- priors_unscaled$linear_effect_yieldscale[ind] *
-      this_scaling_factors$sd[this_scaling_factors$param == priors_unscaled$scalar_par[ind]]
-    prior <- prior + prior_string(
-      paste0("normal(", scaled_val, ",", abs(scaled_val), ")"),
-      class = "b",
-      coef = priors_unscaled$parameter[ind]
-    )
+  if (!grepl("*", this_cov, fixed = TRUE)) {
+    ind <- which(this_scaling_factors$param == this_cov)
+    if (length(ind) == 1) {
+      scaled_sd <- this_scaling_factors$sd[ind]
+      prior <- prior + prior_string(
+        paste0("normal(0,", max(0.1, as.numeric(scaled_sd) * 2), ")"),
+        class = "b",
+        coef = this_cov
+      )
+    }
   }
 }
 
