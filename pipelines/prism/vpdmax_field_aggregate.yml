@@ -47,6 +47,8 @@ steps:
       output_file: "{combined_monthly_csv}"
       format: csv
       verbose: true
+    resources:
+      mem: "48G"
     output_var: combined_stats
 
   - name: "{sys.step.NN}_normalize_vpdmax_field_year"
@@ -56,5 +58,5 @@ steps:
       script_args: "--input-csv \"{combined_monthly_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
       verbose: true
     resources:
-      mem: "24G"
+      mem: "48G"
     output_var: vpdmax_field_year
