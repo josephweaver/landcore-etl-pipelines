@@ -216,6 +216,7 @@ def main() -> int:
     output_dir = Path(str(args.output_dir)).expanduser().resolve()
     manifest_csv = Path(str(args.manifest_csv)).expanduser().resolve()
     summary_json = Path(str(args.summary_json)).expanduser().resolve()
+    diagnostics_csv = manifest_csv.with_name("county_model_input_diagnostics.csv")
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_csv.parent.mkdir(parents=True, exist_ok=True)
     summary_json.parent.mkdir(parents=True, exist_ok=True)
@@ -462,6 +463,7 @@ def main() -> int:
         focal_fips_values = sorted(joined_by_fips.keys())
 
     manifest_rows: list[dict[str, Any]] = []
+    diagnostic_rows: list[dict[str, Any]] = []
     neighborhood_file_count = 0
     neighborhood_row_count = 0
     for focal_fips in focal_fips_values:
@@ -504,8 +506,24 @@ def main() -> int:
                 "vpd_row_count": vpd_row_count,
                 "nccpi_row_count": nccpi_row_count,
                 "field_fips_row_count": field_fips_row_count,
+                "joined_row_count": len(joined_by_fips.get(focal_fips, [])),
                 "year_min": county_summary["year_min"] if county_summary["year_min"] is not None else "",
                 "year_max": county_summary["year_max"] if county_summary["year_max"] is not None else "",
+                "output_csv": county_csv.as_posix() if neighborhood_rows else "",
+                "summary_json": county_summary_json.as_posix(),
+            }
+        )
+        diagnostic_rows.append(
+            {
+                "focal_fips": focal_fips,
+                "neighbor_count": len(neighbor_fips),
+                "source_corn_row_count": corn_row_count,
+                "source_tillage_row_count": tillage_row_count,
+                "source_vpd_row_count": vpd_row_count,
+                "source_nccpi_row_count": nccpi_row_count,
+                "source_field_fips_row_count": field_fips_row_count,
+                "joined_row_count": len(joined_by_fips.get(focal_fips, [])),
+                "output_row_count": len(neighborhood_rows),
                 "output_csv": county_csv.as_posix() if neighborhood_rows else "",
                 "summary_json": county_summary_json.as_posix(),
             }
@@ -526,6 +544,7 @@ def main() -> int:
                 "vpd_row_count",
                 "nccpi_row_count",
                 "field_fips_row_count",
+                "joined_row_count",
                 "year_min",
                 "year_max",
                 "output_csv",
@@ -534,6 +553,26 @@ def main() -> int:
         )
         writer.writeheader()
         writer.writerows(manifest_rows)
+
+    with diagnostics_csv.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=[
+                "focal_fips",
+                "neighbor_count",
+                "source_corn_row_count",
+                "source_tillage_row_count",
+                "source_vpd_row_count",
+                "source_nccpi_row_count",
+                "source_field_fips_row_count",
+                "joined_row_count",
+                "output_row_count",
+                "output_csv",
+                "summary_json",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(diagnostic_rows)
 
     summary = {
         "corn_csv": corn_csv.as_posix(),
@@ -544,6 +583,7 @@ def main() -> int:
         "adjacency_csv": adjacency_csv.as_posix(),
         "output_dir": output_dir.as_posix(),
         "manifest_csv": manifest_csv.as_posix(),
+        "diagnostics_csv": diagnostics_csv.as_posix(),
         "year_start": int(args.year_start) if args.year_start is not None else None,
         "year_end": int(args.year_end) if args.year_end is not None else None,
         "corn_row_count": corn_row_count,
