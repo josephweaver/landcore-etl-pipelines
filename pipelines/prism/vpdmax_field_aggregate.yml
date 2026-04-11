@@ -35,6 +35,8 @@ steps:
       script_args: "--tile \"{item}\" --prism-dir \"{extractdir}\" --polygon-path \"{yanroy_polygon_dir}/WELD_{item}_2010_field_segments.gpkg\" --output-csv \"{per_tile_outdir}/{item}.csv\" --summary-json \"{per_tile_outdir}/{item}.summary.json\" --polygon-id-field field_id --polygon-name-field source_name --day-from-filename-regex \"{year_month_regex}\" --day-from-filename-group 1 --value-prefix \"{value_prefix}\" --verbose"
       verbose: true
     foreach: tiles
+    resources:
+      time: "02:00:00"
     output_var: raster_stats
 
   - name: "{sys.step.NN}_combine_vpdmax_monthly_stats"
