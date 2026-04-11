@@ -11,13 +11,13 @@ vars:
   name: prism_vpdmax_field_aggregate
   datadir: "{env.datadir}/prism/vpdmax"
   outdir: "{datadir}"
-  extractdir: "{datadir}/daily/raw"
+  extractdir: "{datadir}/monthly/raw"
   yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
   tiles: "{project.tiles_of_interest}"
   year_month_regex: "(20\\d{2}(0[1-9]|1[0-2]))"
-  per_tile_outdir: "{datadir}/daily/by_tile"
+  per_tile_outdir: "{datadir}/monthly/by_tile"
   per_tile_csv_glob: "{per_tile_outdir}/*.csv"
-  combined_monthly_csv: "{env.datadir}/prism/vpdmax/daily/vpdmax_tile_field_monthly.csv"
+  combined_monthly_csv: "{env.datadir}/prism/vpdmax/monthly/vpdmax_tile_field_monthly.csv"
   output_csv: "{outdir}/vpdmax_field_year.csv"
   summary_json: "{outdir}/vpdmax_field_year.summary.json"
   value_prefix: vpdmax

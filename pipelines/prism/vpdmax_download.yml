@@ -4,7 +4,7 @@ vars:
   name: prism_vpdmax_download
   prism_base_url: ftp://prism.oregonstate.edu/time_series/us/an/800m/vpdmax/monthly
   year_start: 2005
-  year_end: 2025
+  year_end: 2016
   years: "{expr.range(year_start, year_end)}"
   prism_filename_glob: "*"
   workdir: "{env.workdir}/{sys.job.name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
