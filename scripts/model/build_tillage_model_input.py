@@ -469,44 +469,68 @@ def main() -> int:
         neighborhood_rows: list[dict[str, str]] = []
         for neighbor in neighbor_fips:
             neighborhood_rows.extend(joined_by_fips.get(neighbor, []))
-        if not neighborhood_rows:
-            continue
         county_dir = output_dir / focal_fips
-        county_dir.mkdir(parents=True, exist_ok=True)
         county_csv = county_dir / "county_data.csv"
         county_summary_json = county_dir / "county_data.summary.json"
-        with county_csv.open("w", encoding="utf-8", newline="") as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(neighborhood_rows)
+        if neighborhood_rows:
+            county_dir.mkdir(parents=True, exist_ok=True)
+            with county_csv.open("w", encoding="utf-8", newline="") as f:
+                writer = csv.DictWriter(f, fieldnames=fieldnames)
+                writer.writeheader()
+                writer.writerows(neighborhood_rows)
         year_values = sorted({int(_to_text(row.get("year"))) for row in neighborhood_rows if _to_text(row.get("year"))})
         county_summary = {
             "focal_fips": focal_fips,
             "neighbor_fips": neighbor_fips,
             "row_count": len(neighborhood_rows),
+            "corn_row_count": corn_row_count,
+            "tillage_row_count": tillage_row_count,
+            "vpd_row_count": vpd_row_count,
+            "nccpi_row_count": nccpi_row_count,
+            "field_fips_row_count": field_fips_row_count,
             "year_min": min(year_values) if year_values else None,
             "year_max": max(year_values) if year_values else None,
-            "output_csv": county_csv.as_posix(),
+            "output_csv": county_csv.as_posix() if neighborhood_rows else "",
         }
+        county_dir.mkdir(parents=True, exist_ok=True)
         county_summary_json.write_text(json.dumps(county_summary, indent=2), encoding="utf-8")
         manifest_rows.append(
             {
                 "focal_fips": focal_fips,
                 "neighbor_count": len(neighbor_fips),
                 "row_count": len(neighborhood_rows),
+                "corn_row_count": corn_row_count,
+                "tillage_row_count": tillage_row_count,
+                "vpd_row_count": vpd_row_count,
+                "nccpi_row_count": nccpi_row_count,
+                "field_fips_row_count": field_fips_row_count,
                 "year_min": county_summary["year_min"] if county_summary["year_min"] is not None else "",
                 "year_max": county_summary["year_max"] if county_summary["year_max"] is not None else "",
-                "output_csv": county_csv.as_posix(),
+                "output_csv": county_csv.as_posix() if neighborhood_rows else "",
                 "summary_json": county_summary_json.as_posix(),
             }
         )
-        neighborhood_file_count += 1
-        neighborhood_row_count += len(neighborhood_rows)
+        if neighborhood_rows:
+            neighborhood_file_count += 1
+            neighborhood_row_count += len(neighborhood_rows)
 
     with manifest_csv.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["focal_fips", "neighbor_count", "row_count", "year_min", "year_max", "output_csv", "summary_json"],
+            fieldnames=[
+                "focal_fips",
+                "neighbor_count",
+                "row_count",
+                "corn_row_count",
+                "tillage_row_count",
+                "vpd_row_count",
+                "nccpi_row_count",
+                "field_fips_row_count",
+                "year_min",
+                "year_max",
+                "output_csv",
+                "summary_json",
+            ],
         )
         writer.writeheader()
         writer.writerows(manifest_rows)
