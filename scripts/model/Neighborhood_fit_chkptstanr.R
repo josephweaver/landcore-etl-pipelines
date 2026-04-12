@@ -101,10 +101,25 @@ wall_clock_margin_seconds <- if (length(args) >= 13 && nzchar(args[13])) as.inte
 # chkptstanr saves progress in chunks, so we can resume a long Stan run later.
 expected_checkpoints <- as.integer(ceiling((iter_warmup + iter_sampling) / iter_per_chkpt))
 status_file <- file.path(checkpoint_dir, "run_status.txt")
+checkpoint_file <- file.path(checkpoint_dir, "checkpoint.json")
+target_iter <- iter_warmup + iter_sampling
 
 write_status <- function(status_text) {
   writeLines(status_text, status_file)
   message(status_text)
+}
+
+checkpoint_fips <- basename(dirname(dirname(normalizePath(checkpoint_dir, winslash = "/", mustWork = FALSE))))
+
+write_checkpoint <- function(status_text, completed_iter) {
+  payload <- list(
+    fips = checkpoint_fips,
+    log_path = normalizePath(status_file, winslash = "/", mustWork = FALSE),
+    status = status_text,
+    completed_iter = as.integer(completed_iter),
+    target_iter = as.integer(target_iter)
+  )
+  write_json(payload, checkpoint_file, auto_unbox = TRUE, pretty = TRUE)
 }
 
 wall_clock_start <- Sys.time()
@@ -126,6 +141,7 @@ should_stop_for_time <- function() {
 dir.create(checkpoint_dir, recursive = TRUE, showWarnings = FALSE)
 dir.create(dirname(output_model_rds), recursive = TRUE, showWarnings = FALSE)
 dir.create(dirname(fit_summary_json), recursive = TRUE, showWarnings = FALSE)
+write_checkpoint("pending", 0L)
 
 # Try a few known CmdStan locations so the script can run on shared infrastructure
 # without requiring every caller to set CMDSTAN manually.
@@ -353,6 +369,7 @@ if (!is.null(fit) && completed_checkpoints >= expected_checkpoints) {
   message("Saved fit to legacy output path: ", output_model_rds)
   message("Saved summary to: ", fit_summary)
   write_fit_summary("process complete.", final_fit_path = output_model_rds)
+  write_checkpoint("complete", target_iter)
   write_status("process complete.")
 } else {
   sample_files <- list.files(file.path(checkpoint_dir, "cp_samples"), full.names = TRUE)
@@ -393,6 +410,7 @@ if (!is.null(fit) && completed_checkpoints >= expected_checkpoints) {
         partial_draws_path = draws_rds,
         partial_summary_path = draws_summary
       )
+      write_checkpoint("complete", target_iter)
       write_status("process complete.")
     } else {
       write_fit_summary(
@@ -400,15 +418,18 @@ if (!is.null(fit) && completed_checkpoints >= expected_checkpoints) {
         partial_draws_path = draws_rds,
         partial_summary_path = draws_summary
       )
+      write_checkpoint("needs_more", completed_checkpoints * iter_per_chkpt)
       write_status("resume to process the next batch")
     }
   } else {
     message("Run stopped before any sample chunks were available.")
     if (completed_checkpoints >= expected_checkpoints) {
       write_fit_summary("process complete.")
+      write_checkpoint("complete", target_iter)
       write_status("process complete.")
     } else {
       write_fit_summary("resume to process the next batch")
+      write_checkpoint("needs_more", completed_checkpoints * iter_per_chkpt)
       write_status("resume to process the next batch")
     }
   }
