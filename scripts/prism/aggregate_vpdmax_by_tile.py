@@ -47,7 +47,6 @@ def main() -> int:
     ap.add_argument("--output-csv", required=True)
     ap.add_argument("--summary-json", required=True)
     ap.add_argument("--polygon-id-field", default="field_id")
-    ap.add_argument("--polygon-name-field", default="source_name")
     ap.add_argument("--day-from-filename-regex", default=r"(20\d{2}(0[1-9]|1[0-2]))")
     ap.add_argument("--day-from-filename-group", type=int, default=1)
     ap.add_argument("--value-prefix", default="vpdmax")
@@ -75,8 +74,6 @@ def main() -> int:
         raise RuntimeError(f"polygon path contains no features: {polygon_path}")
     if args.polygon_id_field not in polygons.columns:
         raise RuntimeError(f"polygon_id_field not found: {args.polygon_id_field}")
-    if args.polygon_name_field and args.polygon_name_field not in polygons.columns:
-        raise RuntimeError(f"polygon_name_field not found: {args.polygon_name_field}")
 
     day_pattern = re.compile(str(args.day_from_filename_regex))
     rows: list[dict[str, object]] = []
@@ -102,10 +99,8 @@ def main() -> int:
                 if pixel_count == 0:
                     continue
                 out_row = {
-                    "county_id": str(polygon_row[args.polygon_id_field]),
-                    "county_name": str(polygon_row[args.polygon_name_field]) if args.polygon_name_field else "",
+                    "field_id": str(polygon_row[args.polygon_id_field]),
                     "day": day_value,
-                    "raster_path": raster_path.as_posix(),
                     "tile_coord": tile,
                     f"{args.value_prefix}_mean": f"{stats['mean']:.6f}",
                     f"{args.value_prefix}_max": f"{stats['max']:.6f}",
@@ -116,12 +111,10 @@ def main() -> int:
         if args.verbose:
             print(f"[aggregate_vpdmax_by_tile] tile={tile} raster={raster_path.name} rows={len(rows)}")
 
-    rows.sort(key=lambda row: (str(row["day"]), str(row["county_id"])))
+    rows.sort(key=lambda row: (str(row["day"]), str(row["field_id"])))
     fieldnames = [
-        "county_id",
-        "county_name",
+        "field_id",
         "day",
-        "raster_path",
         "tile_coord",
         f"{args.value_prefix}_mean",
         f"{args.value_prefix}_max",

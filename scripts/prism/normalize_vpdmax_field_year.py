@@ -50,6 +50,14 @@ def _pick_value(row: dict[str, str]) -> str:
     return ""
 
 
+def _field_id_from_row(row: dict[str, str]) -> str:
+    for column in ("field_id", "county_id"):
+        value = str(row.get(column) or "").strip()
+        if value:
+            return value
+    return ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Normalize monthly PRISM field aggregates into one row per tile field and year.")
     ap.add_argument("--input-csv", required=True)
@@ -74,11 +82,15 @@ def main() -> int:
     skipped_rows = 0
 
     for row in rows:
-        tile_field_id = str(row.get("county_id") or "").strip()
-        if tile_field_id and "_" not in tile_field_id:
-            tile_coord = _tile_from_source_name(str(row.get("county_name") or ""))
-            if tile_coord:
-                tile_field_id = f"{tile_coord}_{tile_field_id}"
+        field_id = _field_id_from_row(row)
+        tile_coord = str(row.get("tile_coord") or "").strip().lower()
+        tile_field_id = str(row.get("tile_field_ID") or row.get("tile_field_id") or "").strip()
+        if not tile_field_id and tile_coord and field_id:
+            tile_field_id = f"{tile_coord}_{field_id}"
+        if not tile_field_id and field_id and "_" in field_id:
+            tile_field_id = field_id
+        if not tile_coord and tile_field_id:
+            tile_coord = _tile_from_source_name(tile_field_id)
         year, month = _parse_year_month(str(row.get("day") or ""))
         value = _pick_value(row)
         if not tile_field_id or not year or not month or not value:
