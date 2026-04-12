@@ -18,6 +18,16 @@ def _to_text(value: Any) -> str:
     return str(value).strip()
 
 
+def _to_int(value: Any) -> int | None:
+    text = _to_text(value)
+    if not text:
+        return None
+    try:
+        return int(float(text))
+    except Exception:
+        return None
+
+
 def _write_empty_outputs(
     *,
     output_csv: Path,
@@ -25,25 +35,15 @@ def _write_empty_outputs(
     tile: str,
     field_boundary_path: Path,
     county_path: Path,
-    field_id_field: str,
-    output_tile_field_id_field: str,
 ) -> dict[str, Any]:
     import csv
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     summary_json.parent.mkdir(parents=True, exist_ok=True)
     fieldnames = [
-        field_id_field,
-        output_tile_field_id_field,
         "tile_coord",
-        "yanroy_field_id",
+        "field_id",
         "FIPS",
-        "STATEFP",
-        "COUNTYFP",
-        "county",
-        "county_name_lsad",
-        "field_area",
-        "overlap_area",
         "county_overlap_pct",
         "county_match_count",
     ]
@@ -63,8 +63,6 @@ def _write_empty_outputs(
         "ambiguous_field_count": 0,
         "empty_tile": True,
         "empty_reason": "no field rows after identifier/tile filtering",
-        "field_id_field": field_id_field,
-        "output_tile_field_id_field": output_tile_field_id_field,
     }
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return summary
@@ -77,9 +75,8 @@ def build_field_fips(
     output_csv: Path,
     summary_json: Path,
     tile: str,
-    field_id_field: str,
-    tile_field_id_field: str,
-    output_tile_field_id_field: str,
+    field_id_field: str = "field_id",
+    tile_field_id_field: str = "legacy_tile_field_id",
     tile_coord_field: str,
     yanroy_field_id_field: str,
     county_geoid_field: str,
@@ -150,8 +147,6 @@ def build_field_fips(
             tile=tile_norm,
             field_boundary_path=field_boundary_path,
             county_path=county_path,
-            field_id_field=field_id_field,
-            output_tile_field_id_field=output_tile_field_id_field,
         )
 
     dissolve_fields = [field_id_field, tile_field_id_field]
@@ -209,27 +204,27 @@ def build_field_fips(
     best = intersections.drop_duplicates(subset=[field_id_field], keep="first").copy()
     best = best.merge(field_match_counts, on=field_id_field, how="left")
 
-    output_columns = [field_id_field, tile_field_id_field]
-    for opt_col in [tile_coord_field, yanroy_field_id_field]:
-        if opt_col in best.columns:
-            output_columns.append(opt_col)
-    for county_col in [county_geoid_field, statefp_field, countyfp_field, county_name_field, county_name_lsad_field]:
+    output_columns = []
+    if tile_coord_field in best.columns:
+        output_columns.append(tile_coord_field)
+    if yanroy_field_id_field in best.columns:
+        output_columns.append(yanroy_field_id_field)
+    for county_col in [county_geoid_field]:
         if county_col in best.columns and county_col not in output_columns:
             output_columns.append(county_col)
-    output_columns.extend(["field_area", "overlap_area", "county_overlap_pct", "county_match_count"])
+    output_columns.extend(["county_overlap_pct", "county_match_count"])
 
     output_df = pd.DataFrame(best[output_columns]).copy()
     rename_map = {}
-    if tile_field_id_field in output_df.columns:
-        rename_map[tile_field_id_field] = output_tile_field_id_field
     if county_geoid_field in output_df.columns:
         rename_map[county_geoid_field] = "FIPS"
-    if county_name_field in output_df.columns:
-        rename_map[county_name_field] = "county"
-    if county_name_lsad_field in output_df.columns:
-        rename_map[county_name_lsad_field] = "county_name_lsad"
+    if yanroy_field_id_field in output_df.columns:
+        rename_map[yanroy_field_id_field] = "field_id"
     output_df.rename(columns=rename_map, inplace=True)
-    output_df.sort_values(by=[output_tile_field_id_field], inplace=True)
+    if "field_id" in output_df.columns:
+        output_df["field_id"] = output_df["field_id"].map(_to_int).astype("Int64")
+    output_df.sort_values(by=["field_id"], inplace=True, na_position="last")
+    output_df = output_df[[c for c in ["tile_coord", "field_id", "FIPS", "county_overlap_pct", "county_match_count"] if c in output_df.columns]]
 
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     summary_json.parent.mkdir(parents=True, exist_ok=True)
@@ -246,9 +241,6 @@ def build_field_fips(
         "intersection_row_count": int(len(intersections)),
         "output_row_count": int(len(output_df)),
         "ambiguous_field_count": ambiguous_fields,
-        "field_id_field": field_id_field,
-        "tile_field_id_field": tile_field_id_field,
-        "output_tile_field_id_field": output_tile_field_id_field,
         "county_geoid_field": county_geoid_field,
         "county_name_field": county_name_field,
         "county_name_lsad_field": county_name_lsad_field,
@@ -272,7 +264,6 @@ def main() -> int:
     ap.add_argument("--tile", default="")
     ap.add_argument("--field-id-field", default="field_id")
     ap.add_argument("--tile-field-id-field", default="legacy_tile_field_id")
-    ap.add_argument("--output-tile-field-id-field", default="tile_field_ID")
     ap.add_argument("--tile-coord-field", default="tile_coord")
     ap.add_argument("--yanroy-field-id-field", default="yanroy_field_id")
     ap.add_argument("--county-geoid-field", default="GEOID")
@@ -291,7 +282,6 @@ def main() -> int:
         tile=str(args.tile or ""),
         field_id_field=str(args.field_id_field),
         tile_field_id_field=str(args.tile_field_id_field),
-        output_tile_field_id_field=str(args.output_tile_field_id_field),
         tile_coord_field=str(args.tile_coord_field),
         yanroy_field_id_field=str(args.yanroy_field_id_field),
         county_geoid_field=str(args.county_geoid_field),
