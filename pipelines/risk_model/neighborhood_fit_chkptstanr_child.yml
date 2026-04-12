@@ -13,12 +13,13 @@ vars:
   county_input_csv: "{model_input_root}/{county_fips}/county_data.csv"
   checkpoint_dir: "{run_dir}/chkpt"
   output_model_rds: "{county_fit_dir}/output_model"
+  fit_summary_json: "{county_fit_dir}/fit_summary.json"
   fit_script_path: "/mnt/gs21/scratch/weave151/etl/src/landcore-etl-pipelines/scripts/model/Neighborhood_fit_chkptstanr.R"
   rscript_bin: "Rscript"
-  iter_warmup: 1000
-  iter_sampling: 1000
-  iter_per_chkpt: 10
-  chains: 2
+  iter_warmup: 250
+  iter_sampling: 2500
+  iter_per_chkpt: 250
+  chains: 3
   seed: 1234
   stop_after: ""
   reset: 0
@@ -36,7 +37,7 @@ steps:
       script: "{fit_script_path}"
       python_bin: "{rscript_bin}"
       cwd: "{run_dir}"
-      script_args: "\"{county_input_csv}\" \"{checkpoint_dir}\" {iter_warmup} {iter_sampling} {iter_per_chkpt} {chains} {seed} \"{stop_after}\" {reset} {wall_clock_limit_seconds} {wall_clock_margin_seconds}"
+      script_args: "\"{county_input_csv}\" \"{checkpoint_dir}\" \"{output_model_rds}\" \"{fit_summary_json}\" {iter_warmup} {iter_sampling} {iter_per_chkpt} {chains} {seed} \"{stop_after}\" {reset} {wall_clock_limit_seconds} {wall_clock_margin_seconds}"
       verbose: true
     resources:
       mem: "16G"
