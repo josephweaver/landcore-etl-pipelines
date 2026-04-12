@@ -75,35 +75,37 @@ def main() -> int:
         reader = csv.DictReader(f)
         if not reader.fieldnames:
             raise RuntimeError(f"input csv has no header: {input_csv}")
-        rows = list(reader)
 
     grouped: dict[tuple[str, str], dict[str, str]] = {}
     duplicate_month_rows = 0
     skipped_rows = 0
 
-    for row in rows:
-        field_id = _field_id_from_row(row)
-        tile_coord = str(row.get("tile_coord") or "").strip().lower()
-        tile_field_id = str(row.get("tile_field_ID") or row.get("tile_field_id") or "").strip()
-        if not tile_field_id and tile_coord and field_id:
-            tile_field_id = f"{tile_coord}_{field_id}"
-        if not tile_field_id and field_id and "_" in field_id:
-            tile_field_id = field_id
-        if not tile_coord and tile_field_id:
-            tile_coord = _tile_from_source_name(tile_field_id)
-        year, month = _parse_year_month(str(row.get("day") or ""))
-        value = _pick_value(row)
-        if not tile_field_id or not year or not month or not value:
-            skipped_rows += 1
-            continue
-        if int(month) not in TARGET_MONTHS:
-            continue
-        key = (tile_field_id, year)
-        out = grouped.setdefault(key, {"tile_field_ID": tile_field_id, "year": year})
-        month_key = f"vpdmax_{month}"
-        if out.get(month_key):
-            duplicate_month_rows += 1
-        out[month_key] = value
+    # Stream the source CSV instead of loading every row into memory at once.
+    with input_csv.open("r", encoding="utf-8-sig", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            field_id = _field_id_from_row(row)
+            tile_coord = str(row.get("tile_coord") or "").strip().lower()
+            tile_field_id = str(row.get("tile_field_ID") or row.get("tile_field_id") or "").strip()
+            if not tile_field_id and tile_coord and field_id:
+                tile_field_id = f"{tile_coord}_{field_id}"
+            if not tile_field_id and field_id and "_" in field_id:
+                tile_field_id = field_id
+            if not tile_coord and tile_field_id:
+                tile_coord = _tile_from_source_name(tile_field_id)
+            year, month = _parse_year_month(str(row.get("day") or ""))
+            value = _pick_value(row)
+            if not tile_field_id or not year or not month or not value:
+                skipped_rows += 1
+                continue
+            if int(month) not in TARGET_MONTHS:
+                continue
+            key = (tile_field_id, year)
+            out = grouped.setdefault(key, {"tile_field_ID": tile_field_id, "year": year})
+            month_key = f"vpdmax_{month}"
+            if out.get(month_key):
+                duplicate_month_rows += 1
+            out[month_key] = value
 
     normalized_rows: list[dict[str, str]] = []
     missing_month_counts = defaultdict(int)
