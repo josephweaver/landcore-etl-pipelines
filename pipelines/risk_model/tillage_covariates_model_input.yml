@@ -33,4 +33,5 @@ steps:
       verbose: true
     resources:
       mem: "16G"
+      time: "04:00:00"
     output_var: tillage_model_input
