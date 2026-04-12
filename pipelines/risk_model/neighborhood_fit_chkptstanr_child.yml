@@ -42,5 +42,5 @@ steps:
     resources:
       mem: "16G"
       cpus_per_task: 4
-      time: "01:00:00"
+      time: "04:00:00"
     output_var: fit_result
