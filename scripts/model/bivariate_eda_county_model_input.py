@@ -93,6 +93,21 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, indent=2, default=_json_default), encoding="utf-8")
 
 
+def _sqlite_has_required_tables(sqlite_path: Path) -> bool:
+    try:
+        conn = sqlite3.connect(str(sqlite_path))
+        try:
+            rows = conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('joined_output', 'county_neighbors')"
+            ).fetchall()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return False
+    names = {str(row[0]) for row in rows}
+    return {"joined_output", "county_neighbors"}.issubset(names)
+
+
 def _profile_numeric(series: pd.Series) -> dict[str, Any]:
     numeric = pd.to_numeric(series, errors="coerce")
     nonnull = numeric.dropna()
@@ -461,7 +476,9 @@ def main() -> int:
     con = duckdb.connect()
     con.execute("PRAGMA threads=4")
     con.register("manifest_df", manifest_df)
-    if sqlite_path is not None and sqlite_path.exists():
+    sqlite_mode = bool(sqlite_path is not None and sqlite_path.exists() and _sqlite_has_required_tables(sqlite_path))
+
+    if sqlite_mode:
         sqlite_conn = sqlite3.connect(str(sqlite_path))
         try:
             unique_df = pd.read_sql_query(
@@ -717,6 +734,8 @@ def main() -> int:
         "manifest_csv": manifest_csv.as_posix(),
         "output_dir": output_dir.as_posix(),
         "report_md": report_md.as_posix(),
+        "sqlite_path": sqlite_path.as_posix() if sqlite_path is not None else "",
+        "sqlite_mode_used": sqlite_mode,
         "county_glob": county_glob,
         "county_rows": {
             "row_count": county_row_count,
