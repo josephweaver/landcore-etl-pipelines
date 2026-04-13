@@ -23,15 +23,29 @@ vars:
   output_dir: "{outdir}/county_model_input"
   manifest_csv: "{outdir}/county_model_input_manifest.csv"
   summary_json: "{outdir}/tillage_covariates_v1.summary.json"
+  sqlite_stage_dir: "{outdir}/tillage_model_input"
+  sqlite_work_path: "{workdir}/join.sqlite3"
+  sqlite_path: "{sqlite_stage_dir}/join.sqlite3"
 
 steps:
   - name: "{sys.step.NN}_build_tillage_model_input"
     plugin: exec_script
     args:
       script: scripts/model/build_tillage_model_input.py
-      script_args: "--corn-csv \"{corn_csv}\" --tillage-csv \"{tillage_csv}\" --vpdmax-csv \"{vpdmax_csv}\" --nccpi-csv \"{nccpi_csv}\" --field-fips-csv \"{field_fips_csv}\" --adjacency-csv \"{adjacency_csv}\" --output-dir \"{output_dir}\" --manifest-csv \"{manifest_csv}\" --summary-json \"{summary_json}\" --year-start {year_start} --year-end {year_end} --verbose"
+      script_args: "--corn-csv \"{corn_csv}\" --tillage-csv \"{tillage_csv}\" --vpdmax-csv \"{vpdmax_csv}\" --nccpi-csv \"{nccpi_csv}\" --field-fips-csv \"{field_fips_csv}\" --adjacency-csv \"{adjacency_csv}\" --output-dir \"{output_dir}\" --manifest-csv \"{manifest_csv}\" --summary-json \"{summary_json}\" --sqlite-path \"{sqlite_work_path}\" --year-start {year_start} --year-end {year_end} --verbose"
       verbose: true
     resources:
       mem: "16G"
       time: "04:00:00"
     output_var: tillage_model_input
+
+  - name: "{sys.step.NN}_persist_join_sqlite"
+    plugin: file_copy_regex
+    args:
+      src: "{workdir}"
+      dst: "{sqlite_stage_dir}"
+      pattern: "^join\\.sqlite3$"
+      match_on: filename
+      overwrite: true
+      verbose: true
+    output_var: persisted_join_sqlite

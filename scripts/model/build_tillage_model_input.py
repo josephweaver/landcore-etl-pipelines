@@ -7,6 +7,7 @@ import json
 import sqlite3
 import tempfile
 from collections import defaultdict
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -202,6 +203,7 @@ def main() -> int:
     ap.add_argument("--output-dir", required=True)
     ap.add_argument("--manifest-csv", required=True)
     ap.add_argument("--summary-json", required=True)
+    ap.add_argument("--sqlite-path", default="")
     ap.add_argument("--year-start", type=int, default=None)
     ap.add_argument("--year-end", type=int, default=None)
     ap.add_argument("--verbose", action="store_true")
@@ -216,10 +218,15 @@ def main() -> int:
     output_dir = Path(str(args.output_dir)).expanduser().resolve()
     manifest_csv = Path(str(args.manifest_csv)).expanduser().resolve()
     summary_json = Path(str(args.summary_json)).expanduser().resolve()
+    sqlite_path = Path(str(args.sqlite_path)).expanduser().resolve() if str(args.sqlite_path or "").strip() else None
     diagnostics_csv = manifest_csv.with_name("county_model_input_diagnostics.csv")
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_csv.parent.mkdir(parents=True, exist_ok=True)
     summary_json.parent.mkdir(parents=True, exist_ok=True)
+    if sqlite_path is not None:
+        sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+        if sqlite_path.exists():
+            sqlite_path.unlink()
 
     for path in [corn_csv, tillage_csv, vpdmax_csv, nccpi_csv, field_fips_csv, adjacency_csv]:
         if not path.exists():
@@ -243,8 +250,13 @@ def main() -> int:
         "nccpi3corn",
     ]
 
-    with tempfile.TemporaryDirectory(prefix="tillage_model_input_", dir=str(summary_json.parent)) as temp_dir:
-        db_path = Path(temp_dir) / "join.sqlite3"
+    temp_ctx = (
+        tempfile.TemporaryDirectory(prefix="tillage_model_input_", dir=str(summary_json.parent))
+        if sqlite_path is None
+        else nullcontext(None)
+    )
+    with temp_ctx as temp_dir:
+        db_path = sqlite_path if sqlite_path is not None else Path(str(temp_dir)) / "join.sqlite3"
         conn = sqlite3.connect(str(db_path))
         try:
             conn.execute("PRAGMA journal_mode = WAL")
@@ -462,6 +474,78 @@ def main() -> int:
     if not focal_fips_values:
         focal_fips_values = sorted(joined_by_fips.keys())
 
+    if sqlite_path is not None:
+        conn = sqlite3.connect(str(db_path))
+        try:
+            conn.execute("DROP TABLE IF EXISTS joined_output")
+            conn.execute(
+                """
+                CREATE TABLE joined_output (
+                  tile_field_ID TEXT NOT NULL,
+                  tile_coord TEXT,
+                  field_ID TEXT,
+                  FIPS TEXT NOT NULL,
+                  state TEXT,
+                  county TEXT,
+                  year TEXT NOT NULL,
+                  unscaled_yield TEXT,
+                  annual_tillage TEXT,
+                  NCCPI TEXT,
+                  tillage_0_prop TEXT,
+                  tillage_1_prop TEXT,
+                  vpdmax_7 TEXT,
+                  vpdmax_8 TEXT,
+                  nccpi3corn TEXT,
+                  PRIMARY KEY (tile_field_ID, year)
+                )
+                """
+            )
+            conn.executemany(
+                """
+                INSERT INTO joined_output (
+                  tile_field_ID, tile_coord, field_ID, FIPS, state, county, year, unscaled_yield,
+                  annual_tillage, NCCPI, tillage_0_prop, tillage_1_prop, vpdmax_7, vpdmax_8, nccpi3corn
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        row["tile_field_ID"],
+                        row["tile_coord"],
+                        row["field_ID"],
+                        row["FIPS"],
+                        row["state"],
+                        row["county"],
+                        row["year"],
+                        row["unscaled_yield"],
+                        row["annual_tillage"],
+                        row["NCCPI"],
+                        row["tillage_0_prop"],
+                        row["tillage_1_prop"],
+                        row["vpdmax_7"],
+                        row["vpdmax_8"],
+                        row["nccpi3corn"],
+                    )
+                    for row in joined_rows
+                ],
+            )
+            conn.execute("DROP TABLE IF EXISTS county_neighbors")
+            conn.execute(
+                """
+                CREATE TABLE county_neighbors (
+                  focal_fips TEXT NOT NULL,
+                  neighbor_fips TEXT NOT NULL,
+                  PRIMARY KEY (focal_fips, neighbor_fips)
+                )
+                """
+            )
+            conn.executemany(
+                "INSERT INTO county_neighbors (focal_fips, neighbor_fips) VALUES (?, ?)",
+                [(focal_fips, neighbor) for focal_fips in focal_fips_values for neighbor in (adjacency.get(focal_fips) or [focal_fips])],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
     manifest_rows: list[dict[str, Any]] = []
     diagnostic_rows: list[dict[str, Any]] = []
     neighborhood_file_count = 0
@@ -584,6 +668,7 @@ def main() -> int:
         "output_dir": output_dir.as_posix(),
         "manifest_csv": manifest_csv.as_posix(),
         "diagnostics_csv": diagnostics_csv.as_posix(),
+        "sqlite_path": db_path.as_posix(),
         "year_start": int(args.year_start) if args.year_start is not None else None,
         "year_end": int(args.year_end) if args.year_end is not None else None,
         "corn_row_count": corn_row_count,
