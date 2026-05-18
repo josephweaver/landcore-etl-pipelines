@@ -1,0 +1,51 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/lobell/corn_field_year.yml
+  - pipelines/lobell/tillage_field_year.yml
+  - pipelines/prism/vpdmax_field_aggregate.yml
+  - pipelines/ssurgo/yanroy_tile_field_nccpi.yml
+  - pipelines/yanroy/field_fips.yml
+
+vars:
+  dataset_id: model_in.tillage_covariates_v2
+  name: tillage_covariates_model_input_v2
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  outdir: "{env.basedir}/data/risk_model/model_input"
+  corn_csv: "{env.basedir}/data/lobell/corn/lobell_corn_yanroy_field_year.csv"
+  tillage_csv: "{env.basedir}/data/lobell/tillage/lobell_tillage_field_year.csv"
+  vpdmax_csv: "{env.basedir}/data/prism/vpdmax/vpdmax_field_year.csv"
+  nccpi_csv: "{env.basedir}/data/ssurgo/yanroy_nccpi/tile_field_nccpi_weighted.csv"
+  field_fips_csv: "{env.basedir}/data/yanroy/field_fips/yanroy_tile_field_fips.csv"
+  adjacency_csv: "{sys.projectdir}/assets/county_adjacency2010.csv"
+  year_start: 2005
+  year_end: 2016
+  output_dir: "{outdir}/county_model_input_v2"
+  manifest_csv: "{outdir}/county_model_input_v2_manifest.csv"
+  summary_json: "{outdir}/tillage_covariates_v2.summary.json"
+  sqlite_stage_dir: "{outdir}/tillage_model_input_v2"
+  sqlite_work_path: "{workdir}/join.sqlite3"
+  sqlite_path: "{sqlite_stage_dir}/join.sqlite3"
+
+steps:
+  - name: "{sys.step.NN}_build_tillage_model_input"
+    plugin: exec_script
+    args:
+      script: scripts/model/build_tillage_model_input.py
+      script_args: "--corn-csv \"{corn_csv}\" --tillage-csv \"{tillage_csv}\" --vpdmax-csv \"{vpdmax_csv}\" --nccpi-csv \"{nccpi_csv}\" --field-fips-csv \"{field_fips_csv}\" --adjacency-csv \"{adjacency_csv}\" --output-dir \"{output_dir}\" --manifest-csv \"{manifest_csv}\" --summary-json \"{summary_json}\" --sqlite-path \"{sqlite_work_path}\" --year-start {year_start} --year-end {year_end} --include-tillage-prop-01 --verbose"
+      verbose: true
+    resources:
+      mem: "16G"
+      time: "04:00:00"
+    output_var: tillage_model_input
+
+  - name: "{sys.step.NN}_persist_join_sqlite"
+    plugin: file_copy_regex
+    args:
+      src: "{workdir}"
+      dst: "{sqlite_stage_dir}"
+      pattern: "^join\\.sqlite3$"
+      match_on: filename
+      overwrite: true
+      verbose: true
+    output_var: persisted_join_sqlite

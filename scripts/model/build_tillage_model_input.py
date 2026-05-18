@@ -59,6 +59,32 @@ def _to_annual_tillage(value: str) -> str:
     return str(int(number))
 
 
+def _to_float(value: Any) -> float | None:
+    text = _to_text(value)
+    if text == "":
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _format_float(value: float | None) -> str:
+    if value is None:
+        return ""
+    return f"{value:.12g}"
+
+
+def _classified_tillage_prop(tillage_0_prop: Any, tillage_1_prop: Any) -> str:
+    prop_0 = _to_float(tillage_0_prop)
+    prop_1 = _to_float(tillage_1_prop)
+    numerator = prop_1 if prop_1 is not None else 0.0
+    denominator = (prop_0 if prop_0 is not None else 0.0) + numerator
+    if denominator <= 0:
+        return ""
+    return _format_float(numerator / denominator)
+
+
 def _open_csv(path: Path) -> tuple[Any, csv.DictReader]:
     handle = path.open("r", encoding="utf-8-sig", newline="")
     reader = csv.DictReader(handle)
@@ -206,6 +232,11 @@ def main() -> int:
     ap.add_argument("--sqlite-path", default="")
     ap.add_argument("--year-start", type=int, default=None)
     ap.add_argument("--year-end", type=int, default=None)
+    ap.add_argument(
+        "--include-tillage-prop-01",
+        action="store_true",
+        help="Add tillage_prop_01 = tillage_1_prop / (tillage_0_prop + tillage_1_prop).",
+    )
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -249,6 +280,8 @@ def main() -> int:
         "vpdmax_8",
         "nccpi3corn",
     ]
+    if args.include_tillage_prop_01:
+        fieldnames.insert(fieldnames.index("vpdmax_7"), "tillage_prop_01")
 
     temp_ctx = (
         tempfile.TemporaryDirectory(prefix="tillage_model_input_", dir=str(summary_json.parent))
@@ -445,6 +478,8 @@ def main() -> int:
                     "vpdmax_8": _to_text(vpdmax_8),
                     "nccpi3corn": _to_text(nccpi3corn),
                 }
+                if args.include_tillage_prop_01:
+                    out_row["tillage_prop_01"] = _classified_tillage_prop(tillage_0_prop, tillage_1_prop)
                 required = ["FIPS", "year", "unscaled_yield", "annual_tillage", "NCCPI", "vpdmax_7", "vpdmax_8"]
                 if any(not _to_text(out_row.get(column)) for column in required):
                     missing_required_value += 1
@@ -478,55 +513,27 @@ def main() -> int:
         conn = sqlite3.connect(str(db_path))
         try:
             conn.execute("DROP TABLE IF EXISTS joined_output")
+            sqlite_column_defs = []
+            for column in fieldnames:
+                if column in {"tile_field_ID", "FIPS", "year"}:
+                    sqlite_column_defs.append(f"{column} TEXT NOT NULL")
+                else:
+                    sqlite_column_defs.append(f"{column} TEXT")
+            sqlite_column_defs.append("PRIMARY KEY (tile_field_ID, year)")
             conn.execute(
-                """
+                f"""
                 CREATE TABLE joined_output (
-                  tile_field_ID TEXT NOT NULL,
-                  tile_coord TEXT,
-                  field_ID TEXT,
-                  FIPS TEXT NOT NULL,
-                  state TEXT,
-                  county TEXT,
-                  year TEXT NOT NULL,
-                  unscaled_yield TEXT,
-                  annual_tillage TEXT,
-                  NCCPI TEXT,
-                  tillage_0_prop TEXT,
-                  tillage_1_prop TEXT,
-                  vpdmax_7 TEXT,
-                  vpdmax_8 TEXT,
-                  nccpi3corn TEXT,
-                  PRIMARY KEY (tile_field_ID, year)
+                  {", ".join(sqlite_column_defs)}
                 )
                 """
             )
+            insert_sql = (
+                f"INSERT INTO joined_output ({', '.join(fieldnames)}) "
+                f"VALUES ({', '.join('?' for _ in fieldnames)})"
+            )
             conn.executemany(
-                """
-                INSERT INTO joined_output (
-                  tile_field_ID, tile_coord, field_ID, FIPS, state, county, year, unscaled_yield,
-                  annual_tillage, NCCPI, tillage_0_prop, tillage_1_prop, vpdmax_7, vpdmax_8, nccpi3corn
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        row["tile_field_ID"],
-                        row["tile_coord"],
-                        row["field_ID"],
-                        row["FIPS"],
-                        row["state"],
-                        row["county"],
-                        row["year"],
-                        row["unscaled_yield"],
-                        row["annual_tillage"],
-                        row["NCCPI"],
-                        row["tillage_0_prop"],
-                        row["tillage_1_prop"],
-                        row["vpdmax_7"],
-                        row["vpdmax_8"],
-                        row["nccpi3corn"],
-                    )
-                    for row in joined_rows
-                ],
+                insert_sql,
+                [[row.get(column, "") for column in fieldnames] for row in joined_rows],
             )
             conn.execute("DROP TABLE IF EXISTS county_neighbors")
             conn.execute(
