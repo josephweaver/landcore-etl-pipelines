@@ -13,7 +13,7 @@ Recommended reasoning: high
 Extend the local workflow from synthetic fixtures to real input materialization:
 
 ```text
-Yan/Roy raster: /tmp/h18v07.hdr
+Yan/Roy raster: .data\ReleaseData.7z
 CDL ZIP: https://www.nass.usda.gov/Research_and_Science/Cropland/Release/datasets/2010_30m_cdls.zip
 ```
 

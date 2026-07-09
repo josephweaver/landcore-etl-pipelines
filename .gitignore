@@ -3,3 +3,4 @@
 pipelines/.builder_step_tests/
 .runs
 landcore-etl-pipelines.code-workspace
+.data

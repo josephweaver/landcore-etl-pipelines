@@ -1,6 +1,6 @@
 # OS-003: Local Synthetic GORC Workflow
 
-Status: Proposed
+Status: Implemented
 Scope: LandCore repository only
 Do not modify: GORC core, GORC worker, GORC controller, GORC data-asset providers, GORC geospatial plugins
 

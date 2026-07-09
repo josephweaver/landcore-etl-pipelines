@@ -4,7 +4,7 @@
 |---|---|---|
 | OS-001 | implemented | layout and product contract baseline created |
 | OS-002 | implemented | Python script contracts and unit fixtures |
-| OS-003 | proposed | local synthetic GORC workflow |
+| OS-003 | implemented | local synthetic GORC workflow |
 | OS-004 | proposed | local real input (CDL 2010 + Yan/Roy) |
 | OS-005 | proposed | real local field-crop-year product |
 | OS-006 | proposed | fake HPCC graduation |

@@ -10,7 +10,14 @@ This runbook captures the staged execution path:
 
 - Validate `land-core.project.json` is present.
 - Ensure `field-year-crop/docs/data-product-spec.md` matches the expected output schema.
-- Run the local synthetic/fixture workflow before first real input work.
+- Run the local synthetic/fixture workflow before first real input work:
+  `bash field-year-crop/scripts/smoke/local_synthetic_field_crop_year.sh`
+- The local smoke uses the sibling `../go-etl` checkout under WSL to start the controller,
+  which then starts workers through its direct-process scheduler and runs `goet-geospatial`
+  against the synthetic `/tmp/landcore-field-year-crop/local-synthetic` inputs.
+- Controller logs land in the smoke temp directory as `controller.log`; controller-owned
+  worker logs land under `controller-runtime/logs/worker.log`, with attempt logs under
+  `controller-runtime/tmp/attempts/<attempt-id>/logs/`.
 
 ## Fake HPCC
 
