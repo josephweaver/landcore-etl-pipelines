@@ -1,11 +1,41 @@
-﻿# LandCore ETL Pipelines
+# LandCore ETL Pipelines
 
-This repository contains LandCore-specific ETL pipelines and scripts.
+This repository contains LandCore ETL pipelines, legacy pipeline/script assets,
+and a field-specific `field-year-crop/` implementation root for producing
+LandCore data products.
+
+The orchestration assets run on GORC, a separate public orchestration runtime
+maintained outside this repository.
+
+LandCore runs local debug first, then fake HPCC if configured, then real HPCC.
 
 ## Layout
 
-- `pipelines/`
-- `scripts/`
+- `land-core.project.json`
+- `project-organization.md`
+- `docs/`
+- `field-year-crop/`
+- `legacy/`
+
+The old top-level `assets/`, `db/`, `pipelines/`, `queries/`, and `scripts/`
+directories were moved under `legacy/`.
+
+## Orchestration
+
+The field-year-crop implementation root owns:
+
+- LandCore project configuration
+- LandCore workflow definitions
+- LandCore-specific R and Python scripts
+- data-product documentation
+- runbooks and validation scripts
+- runtime version pinning
+
+GORC itself is not vendored into this repository. Install GORC from:
+
+https://github.com/josephweaver/go-etl
+
+Use the pinned GORC version or commit listed in `GORC_VERSION.md`.
 
 ## Current contents
 
@@ -46,12 +76,14 @@ This repository contains LandCore-specific ETL pipelines and scripts.
 
 ## Working with Codex
 
-This repo is intended to be developed together with the sibling ETL framework repo:
+This repo is intended to be developed together with the sibling ETL framework
+repo:
 
 - `../etl`
 
 If you want Codex to help create or repair pipelines, start the session from the
-`research-etl` repo root so it can see the AI routing and prompt-engineering files.
+`research-etl` repo root so it can see the AI routing and prompt-engineering
+files.
 
 Recommended workflow:
 
