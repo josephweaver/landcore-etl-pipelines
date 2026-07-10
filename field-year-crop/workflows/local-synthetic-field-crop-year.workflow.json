@@ -104,7 +104,6 @@
     "Steps": [
       {
         "ID": "pair-counts",
-        "parallel_with": "field-year-crop-synthetic-stage",
         "FanOut": {
           "WorkItem": {
             "FanOutExpression": "${pair_runs[*]}",
@@ -138,7 +137,6 @@
       },
       {
         "ID": "summarize",
-        "parallel_with": "field-year-crop-synthetic-stage",
         "FanOut": {
           "WorkItem": {
             "FanOutExpression": "${summary_runs[*]}",

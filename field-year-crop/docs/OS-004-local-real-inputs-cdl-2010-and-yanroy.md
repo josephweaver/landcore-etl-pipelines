@@ -39,13 +39,25 @@ field-year-crop/docs/issues.md
 
 ## Required Input Assumptions
 
-The local machine has:
+The local machine has the repo-local Yan/Roy tile:
 
 ```text
-/tmp/h18v07.hdr
+.data/h18v07/WELD_h18v07_2010_field_segments.hdr
 ```
 
-Important: this may not be enough. If it is an ENVI header, GDAL may require paired binary data files next to it.
+with paired binary and ancillary sidecars next to it. Alternately,
+`.data/ReleaseData.7z` may be present; the smoke can extract it when a local
+`7z`, `7za`, or `7zr` executable is available.
+
+The smoke stages the worker-visible Yan/Roy input under:
+
+```text
+/tmp/landcore-field-year-crop/local-real-input-metadata-2010/yanroy/
+```
+
+GDAL opens the ENVI data file
+`WELD_h18v07_2010_field_segments`; the companion `.hdr` remains next to it and
+is recorded in metadata.
 
 The CDL URL is:
 
@@ -113,7 +125,7 @@ The actual Google Drive/rclone proof remains OS-009.
 Create a Python script that:
 
 1. discovers the primary CDL raster inside the extracted CDL directory;
-2. validates that `/tmp/h18v07.hdr` exists inside the worker-visible path;
+2. validates that the staged Yan/Roy h18v07 data file and companion header exist inside the worker-visible path;
 3. calls `goet-geospatial` `raster_info` for both inputs;
 4. writes metadata artifacts:
    - `metadata/cdl_2010_raster_info.json`
@@ -125,7 +137,7 @@ Create a Python script that:
 The metadata output must answer:
 
 ```text
-Can GDAL open /tmp/h18v07.hdr?
+Can GDAL open the staged Yan/Roy h18v07 header?
 What sidecars are needed, if any?
 What is the CDL primary raster member path?
 What are width/height/band count?
@@ -148,7 +160,7 @@ The smoke should fail clearly if:
 - CDL archive cannot be extracted;
 - no CDL raster is discoverable;
 - multiple CDL rasters are discovered and no selector is provided;
-- `/tmp/h18v07.hdr` cannot be opened by GDAL;
+- the staged Yan/Roy h18v07 header cannot be opened by GDAL;
 - metadata JSON files are missing.
 
 ## Stop Conditions

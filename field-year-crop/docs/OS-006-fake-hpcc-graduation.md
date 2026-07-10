@@ -1,6 +1,6 @@
 # OS-006: Fake HPCC Graduation
 
-Status: Proposed
+Status: Verified
 Scope: LandCore repository only
 Do not modify: GORC core, GORC worker, GORC controller, GORC data-asset providers, GORC geospatial plugins
 
@@ -95,3 +95,20 @@ Stop and record an issue if:
 - Runbook records exact commands.
 - Runtime-specific path assumptions are documented.
 - Same workflow logic is preserved.
+
+## Verification
+
+Verified on 2026-07-10 with:
+
+```bash
+bash field-year-crop/scripts/smoke/fake_hpcc_field_crop_year_2010.sh
+```
+
+The smoke uses Option A synthetic input, starts the `../go-etl` controller with
+the fake Slurm shim, submits the project plus a generated temporary workflow
+containing an inline `source_manifest`, launches fake Slurm workers, promotes
+worker artifacts, and validates the expected count and summary CSVs.
+
+The generated workflow uses the OS-005 Numpy pair-count script and the existing
+summary script. It is generated under `field-year-crop/.run/...` during the
+smoke so OS-006 does not introduce a tracked workflow fork.

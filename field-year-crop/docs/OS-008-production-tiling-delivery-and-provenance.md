@@ -1,6 +1,6 @@
 # OS-008: Production Tiling, Delivery, and Provenance
 
-Status: Proposed
+Status: Implemented
 Scope: LandCore repository only
 Do not modify: GORC core, GORC worker, GORC controller, GORC data-asset providers, GORC geospatial plugins
 
@@ -260,6 +260,14 @@ Production validation must check:
 `production_dry_run.sh` should run against synthetic or tiny fixture work units first.
 
 Do not run full production automatically.
+
+Verified dry run:
+
+```text
+command = bash field-year-crop/scripts/smoke/production_dry_run.sh
+result = production dry run passed
+delivery root = field-year-crop/.run/production-dry-run/delivery
+```
 
 ## Completion Criteria
 

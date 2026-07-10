@@ -12,5 +12,6 @@
     "tile_field_year_crop_publish_url": "https://drive.google.com/drive/folders/1yu6bx8ZvJTKX0KIC2Nfzuys-wOgjMGu4?usp=drive_link"
   },
   "states_of_interest": ["IL", "MN", "WI", "OH", "SD", "IA", "IN", "MI", "MO"],
-  "tiles_of_interest": ["h18v07"]
+  "tiles_of_interest": ["h18v07"],
+  "tiles_of_interest_source": "field-year-crop/docs/SC-landcore-field-crop-year-data-product.md"
 }

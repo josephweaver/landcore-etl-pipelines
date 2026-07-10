@@ -40,45 +40,8 @@ done
 
 rm -rf "$synthetic_root"
 mkdir -p "$synthetic_root" "$runner_root" "$bin_dir" "$config_root/controller" \
-  "$runner_root/go-etl-demo-project/field-year-crop/workflows" \
-  "$runner_root/go-etl-demo-project/field-year-crop/scripts/python" \
-  "$runner_root/go-etl-demo-project/workflows" \
-  "$runner_root/go-etl-demo-project/scripts/python" \
-  "$runner_root/go-etl-demo-project/submissions"
+  "$runner_root"
 ln -s "$goetl_dir" "$runner_root/go-etl"
-cp "$root_dir/land-core.project.json" "$runner_root/go-etl-demo-project/project.json"
-cp "$root_dir/land-core.project.json" "$runner_root/go-etl-demo-project/land-core.project.json"
-cp "$root_dir/field-year-crop/workflows/local-synthetic-field-crop-year.workflow.json" \
-  "$runner_root/go-etl-demo-project/workflows/demo-workflow.json"
-cp "$root_dir/field-year-crop/workflows/local-synthetic-field-crop-year.workflow.json" \
-  "$runner_root/go-etl-demo-project/field-year-crop/workflows/local-synthetic-field-crop-year.workflow.json"
-cp "$root_dir/field-year-crop/scripts/python/run_geospatial_pair_counts.py" \
-  "$runner_root/go-etl-demo-project/scripts/python/run_geospatial_pair_counts.py"
-cp "$root_dir/field-year-crop/scripts/python/run_geospatial_pair_counts.py" \
-  "$runner_root/go-etl-demo-project/field-year-crop/scripts/python/run_geospatial_pair_counts.py"
-cp "$root_dir/field-year-crop/scripts/python/summarize_field_crop_counts.py" \
-  "$runner_root/go-etl-demo-project/scripts/python/summarize_field_crop_counts.py"
-cp "$root_dir/field-year-crop/scripts/python/summarize_field_crop_counts.py" \
-  "$runner_root/go-etl-demo-project/field-year-crop/scripts/python/summarize_field_crop_counts.py"
-cp "$root_dir/field-year-crop/scripts/python/field_crop_common.py" \
-  "$runner_root/go-etl-demo-project/scripts/python/field_crop_common.py"
-cp "$root_dir/field-year-crop/scripts/python/field_crop_common.py" \
-  "$runner_root/go-etl-demo-project/field-year-crop/scripts/python/field_crop_common.py"
-cat >"$runner_root/go-etl-demo-project/submissions/demo-workflow-run.json" <<EOF
-{
-  "project": {
-    "repository": "local:demo",
-    "ref": "working-tree",
-    "path": "project.json"
-  },
-  "workflow": {
-    "repository": "local:demo",
-    "ref": "working-tree",
-    "path": "workflows/demo-workflow.json"
-  },
-  "variables": []
-}
-EOF
 
 cd "$runner_root/go-etl"
 go build -tags gdal -o "$bin_dir/goet-geospatial" ./cmd/goet-geospatial
@@ -185,8 +148,6 @@ write_grid "$cdl_asc" "5 5 1" "5 1 1" "2 2 4"
 translate_grid "$field_asc" "$field_tif"
 translate_grid "$cdl_asc" "$cdl_tif"
 
-submission_file="$root_dir/field-year-crop/submissions/local-synthetic-field-crop-year.submission.json"
-
 cd "$runner_root/go-etl"
 "$bin_dir/controller" --config "$controller_config" >"$controller_log" 2>&1 &
 controller_pid=$!
@@ -215,7 +176,14 @@ PY
 
 wait_for_http "http://localhost:8080/status" "controller"
 
-timeout 600s "$bin_dir/demo-client" >"$demo_log" 2>&1
+(
+  cd "$root_dir"
+  timeout 600s "$bin_dir/demo-client" submit \
+    --controller-url "http://localhost:8080" \
+    --project "land-core.project.json" \
+    --workflow "field-year-crop/workflows/local-synthetic-field-crop-year.workflow.json" \
+    --wait
+) >"$demo_log" 2>&1
 
 counts_csv="$synthetic_root/field_crop_year_counts.csv"
 counts_metadata="$synthetic_root/field_crop_year_counts.metadata.json"
@@ -277,7 +245,7 @@ if not response.get("artifacts"):
     raise SystemExit("missing geospatial response artifacts")
 PY
 
-if ! grep -q 'failed=0' "$demo_log"; then
+if ! grep -q 'Status: completed' "$demo_log" || ! grep -q 'Failed: 0' "$demo_log"; then
   echo "workflow did not complete cleanly" >&2
   cat "$demo_log" >&2
   exit 1

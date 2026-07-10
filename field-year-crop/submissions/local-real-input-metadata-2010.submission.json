@@ -1,0 +1,13 @@
+{
+  "project": {
+    "repository": "local:demo",
+    "ref": "working-tree",
+    "path": "land-core.project.json"
+  },
+  "workflow": {
+    "repository": "local:demo",
+    "ref": "working-tree",
+    "path": "field-year-crop/workflows/local-real-input-metadata-2010.workflow.json"
+  },
+  "variables": []
+}

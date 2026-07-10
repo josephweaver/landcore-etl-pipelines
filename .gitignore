@@ -2,5 +2,10 @@
 *.pyc
 pipelines/.builder_step_tests/
 .runs
+.run
 landcore-etl-pipelines.code-workspace
 .data
+*/.run
+field-year-crop/configs/hpcc-controller.json
+field-year-crop/configs/hpcc-worker.json
+field-year-crop/configs/hpcc-worker-gdrive.json

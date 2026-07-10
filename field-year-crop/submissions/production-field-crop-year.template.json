@@ -1,0 +1,36 @@
+{
+  "api_version": "landcore/production-field-crop-year-submission/v1",
+  "kind": "ProductionSubmissionTemplate",
+  "controller_url": "<CONTROLLER_PUBLIC_URL>",
+  "controller_token_file": "<CONTROLLER_CLIENT_TOKEN_FILE_LOCAL>",
+  "project": "land-core.project.json",
+  "workflow": "field-year-crop/workflows/production-field-crop-year.workflow.json",
+  "production_work_units": [
+    {
+      "year": 2010,
+      "tile": "h18v07",
+      "state": "<OPTIONAL_STATE>",
+      "yanroy_raster": "<LANDCORE_DATA_ROOT>/h18v07/WELD_h18v07_2010_field_segments",
+      "cdl_asset_root": "<HPCC_SCRATCH_ROOT>/source/cdl-2010",
+      "output_root": "<HPCC_SCRATCH_ROOT>/publish/field-crop-year/h18v07/2010"
+    }
+  ],
+  "delivery": {
+    "delivery_root": "<HPCC_SCRATCH_ROOT>/publish/field-crop-year-delivery/<RUN_ID>",
+    "delivery_manifest": "delivery_manifest.json",
+    "gdrive_publish_plan": "gdrive_publish_plan.json",
+    "publication_mode": "plan_only"
+  },
+  "slurm_resources": {
+    "partition": "<SLURM_PARTITION>",
+    "account": "<SLURM_ACCOUNT>",
+    "time": "<SLURM_TIME>",
+    "mem": "<SLURM_MEM>",
+    "cpus_per_task": "<SLURM_CPUS_PER_TASK>"
+  },
+  "notes": [
+    "Render explicit year/tile work units. Do not infer production units by scanning private directories.",
+    "Do not run Google Drive upload from production_dry_run.sh.",
+    "Full production submission requires human review."
+  ]
+}

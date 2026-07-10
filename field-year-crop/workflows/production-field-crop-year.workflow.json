@@ -1,0 +1,101 @@
+{
+  "api_version": "landcore/production-field-crop-year/v1",
+  "kind": "ProductionWorkflowTemplate",
+  "workflow": {
+    "ID": "production-field-crop-year",
+    "Variables": [
+      {
+        "name": {
+          "namespace": "workflow",
+          "key": "work_units"
+        },
+        "type": "list",
+        "expression": []
+      }
+    ],
+    "Steps": [
+      {
+        "ID": "raster-info",
+        "description": "Run raster_info for each explicit year/tile work unit."
+      },
+      {
+        "ID": "align",
+        "description": "Align each CDL year raster to the matching Yan/Roy tile grid."
+      },
+      {
+        "ID": "pair-counts",
+        "description": "Count aligned field/crop raster pairs with require_aligned_grid=true."
+      },
+      {
+        "ID": "summarize",
+        "description": "Write per-year/tile field-crop-year summary CSVs."
+      },
+      {
+        "ID": "validate",
+        "description": "Validate each per-year/tile product."
+      },
+      {
+        "ID": "merge-delivery",
+        "description": "Merge outputs, write delivery_manifest.json, write gdrive_publish_plan.json, and validate the package."
+      }
+    ]
+  },
+  "source_manifest": {
+    "files": [
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/run_align_to_grid.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/run_numpy_pair_counts.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/summarize_field_crop_counts.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/validate_field_crop_year_product.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/merge_field_crop_year_outputs.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/write_delivery_manifest.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/write_gdrive_publish_plan.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/validate_delivery_package.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/discover_raster_asset.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/field_crop_common.py",
+        "content_type": "text/x-python"
+      }
+    ]
+  },
+  "notes": [
+    "This is the production shape template. Do not submit full production without rendering explicit work_units and human review.",
+    "Google Drive publication is represented by gdrive_publish_plan.json only; upload is a separate operator action."
+  ]
+}

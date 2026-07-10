@@ -1,0 +1,122 @@
+{
+  "workflow": {
+    "ID": "local-real-input-metadata-2010",
+    "Variables": [
+      {
+        "name": {
+          "namespace": "workflow",
+          "key": "metadata_runs"
+        },
+        "type": "list",
+        "expression": [
+          {
+            "type": "object",
+            "expression": {
+              "id": {
+                "type": "string",
+                "expression": "2010-h18v07"
+              },
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/run_raster_info.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "--cdl-asset-path=/tmp/landcore-field-year-crop/local-real-input-metadata-2010/cdl-2010"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--yanroy-raster=/tmp/landcore-field-year-crop/local-real-input-metadata-2010/yanroy/WELD_h18v07_2010_field_segments"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--geospatial-executable=goet-geospatial"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--output-root=/tmp/landcore-field-year-crop/local-real-input-metadata-2010"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "Steps": [
+      {
+        "ID": "real-input-metadata",
+        "FanOut": {
+          "WorkItem": {
+            "FanOutExpression": "${metadata_runs[*]}",
+            "IDTokenAccessor": ".id",
+            "OutputAccessor": ".id",
+            "Type": "python_script",
+            "IDPrefix": "real_input_metadata",
+            "OutputPrefix": "real_input_metadata",
+            "OutputExtension": ".json",
+            "Parameters": {
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/run_raster_info.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "unused"
+                  }
+                ]
+              }
+            },
+            "ParameterAccessors": {
+              "python_entrypoint": ".python_entrypoint",
+              "python_args": ".python_args"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "source_manifest": {
+    "files": [
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/run_raster_info.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/discover_raster_asset.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/field_crop_common.py",
+        "content_type": "text/x-python"
+      }
+    ]
+  },
+  "variables": [
+    {
+      "name": {
+        "namespace": "worker_config",
+        "key": "worker_count_per_start"
+      },
+      "type": "int",
+      "expression": 1
+    },
+    {
+      "name": {
+        "namespace": "worker_config",
+        "key": "worker_max_count"
+      },
+      "type": "int",
+      "expression": 1
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "api_version": "landcore/fake-hpcc-smoke/v1",
+  "kind": "GeneratedInlineSubmission",
+  "project": "land-core.project.json",
+  "workflow_generated_by": "field-year-crop/scripts/smoke/fake_hpcc_field_crop_year_2010.sh",
+  "workflow_runtime_path": "field-year-crop/.run/fake-hpcc-synthetic/tmp/<run>/fake-hpcc-synthetic-field-crop-year.workflow.json",
+  "source_manifest_mode": "inline_files_from_generated_workflow_manifest",
+  "notes": [
+    "The OS-006 smoke generates a temporary synthetic workflow so no tracked workflow fork is required.",
+    "The generated workflow uses the OS-005 Numpy pair-count worker and the existing summary worker.",
+    "The controller runtime uses fake Slurm through ../go-etl/scripts/fake-hpcc/sbatch."
+  ]
+}

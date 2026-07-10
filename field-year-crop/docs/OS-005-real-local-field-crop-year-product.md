@@ -1,6 +1,6 @@
 # OS-005: Real Local Field-Crop-Year Product
 
-Status: Proposed
+Status: Verified
 Scope: LandCore repository only
 Do not modify: GORC core, GORC worker, GORC controller, GORC data-asset providers, GORC geospatial plugins
 
@@ -29,7 +29,7 @@ aligned CDL -> field_id,crop_id,count -> field/crop/year summary
 field-year-crop/workflows/local-field-crop-year-2010.workflow.json
 field-year-crop/submissions/local-field-crop-year-2010.submission.json
 field-year-crop/scripts/python/run_align_to_grid.py
-field-year-crop/scripts/python/run_geospatial_pair_counts.py
+field-year-crop/scripts/python/run_numpy_pair_counts.py
 field-year-crop/scripts/python/summarize_field_crop_counts.py
 field-year-crop/scripts/python/validate_field_crop_year_product.py
 field-year-crop/scripts/smoke/local_field_crop_year_2010.sh
@@ -47,17 +47,17 @@ Required data-state transitions:
 2. cache_data/materialize or reference Yan/Roy h18v07 raster.
 3. Run goet-geospatial raster_info for Yan/Roy h18v07.
 4. Run goet-geospatial raster_info for CDL 2010.
-5. Run goet-geospatial align_to_grid with source_raster=CDL 2010 and like_raster=Yan/Roy h18v07.
-6. Run goet-geospatial raster_pair_value_counts with field_raster=Yan/Roy h18v07 and value_raster=aligned CDL.
+5. Run goet-geospatial align_to_grid with source_raster=CDL 2010 and the explicit Yan/Roy h18v07 grid.
+6. Run the LandCore Numpy pair-count worker with field_raster=Yan/Roy h18v07 and value_raster=aligned CDL.
 7. Summarize counts with year=2010 and tile=h18v07.
 8. Validate summary.
 9. Publish outputs to local named location.
 ```
 
-Do not implement custom raster extent extraction, custom GDAL crop commands, or
-new geospatial operations in this slice. `raster_info` provides extent evidence.
-`align_to_grid` is the crop/reproject/resample step because `like_raster`
-targets the Yan/Roy tile grid.
+Do not implement custom raster extent extraction or custom GDAL crop commands in
+this slice. `raster_info` provides extent evidence.
+`align_to_grid` is the crop/reproject/resample step targeting the Yan/Roy tile
+grid.
 
 ## Alignment Requirements
 
@@ -71,13 +71,15 @@ Required behavior:
 
 ```text
 source_raster = CDL 2010
-like_raster = Yan/Roy h18v07
+target_crs = Yan/Roy h18v07 CRS WKT
+target_transform = Yan/Roy h18v07 geotransform
+target_width/target_height = Yan/Roy h18v07 dimensions
 resampling = nearest
 ```
 
 This operation must be used instead of a separate `crop(cdl, yanroy_extent)`
-step. The existing plugin uses the `like_raster` grid to produce a tile-sized
-aligned CDL raster.
+step. OS-005 passes the Yan/Roy grid explicitly to avoid CRS authority-code
+misidentification in the current geospatial metadata parser.
 
 Output:
 
@@ -88,11 +90,7 @@ aligned/cdl_2010_on_h18v07_grid.metadata.json
 
 ## Pair Count Requirements
 
-Use `goet-geospatial` operation:
-
-```text
-raster_pair_value_counts
-```
+Use `field-year-crop/scripts/python/run_numpy_pair_counts.py`.
 
 Input:
 
@@ -108,19 +106,17 @@ counts/field_crop_counts_2010.csv
 counts/field_crop_counts_2010.metadata.json
 ```
 
-Required options:
+Required behavior:
 
-```json
-{
-  "require_aligned_grid": true,
-  "chunk_rows": 1024,
-  "field_dtype": "uint16",
-  "value_dtype": "uint16"
-}
+```text
+read aligned rasters in row chunks with GDAL ReadAsArray
+pack field_id and crop_id into uint64 keys
+aggregate counts with numpy.unique
+preserve uint32-compatible Yan/Roy field IDs without remapping
 ```
 
-Run this operation after alignment only. If the metadata says the aligned CDL
-and Yan/Roy tile grids differ, stop and record a blocker instead of counting.
+Run this worker after alignment only. If the aligned CDL and Yan/Roy tile grids
+differ, stop and record a blocker instead of counting.
 
 ## Validation Script
 
@@ -135,14 +131,14 @@ and Yan/Roy tile grids differ, stop and record a blocker instead of counting.
 - dominant crop is deterministic;
 - summary row count equals counts row count;
 - metadata JSON files exist;
-- no field ID exceeds the currently supported dtype range.
+- field IDs are preserved as non-negative uint32-compatible values.
 
-## Required Stop Condition: field_id > 65535
+## Required Stop Condition: negative field_id
 
-If the Yan/Roy raster contains field IDs above 65535, stop and record:
+If the Yan/Roy raster contains negative field IDs, stop and record:
 
 ```text
-Current GORC geospatial raster_pair_value_counts supports uint16 field IDs only. Real Yan/Roy field IDs exceed uint16.
+Yan/Roy field IDs must be non-negative for uint32 pair counts.
 ```
 
 Do not coerce IDs.
@@ -163,12 +159,24 @@ validation/field_crop_year_validation_2010.json
 
 The metadata artifacts should make the plugin reuse visible: raster info
 metadata for each input, alignment metadata from `align_to_grid`, and count
-metadata from `raster_pair_value_counts`.
+metadata from the Numpy pair-count worker.
 
 ## Validation Command
 
 ```bash
 bash field-year-crop/scripts/smoke/local_field_crop_year_2010.sh
+```
+
+Verified locally against h18v07 2010:
+
+```text
+counts rows: 221084
+summary rows: 221084
+distinct fields: 47922
+total counted pixels: 20902248
+max field_id: 47922
+pair-count method: numpy_unique_uint64_pair_key
+pair-count elapsed seconds: 7.731
 ```
 
 ## Completion Criteria

@@ -1,0 +1,17 @@
+{
+  "controller_url": "<CONTROLLER_PUBLIC_URL>",
+  "controller_token_file": "<WORKER_CONTROLLER_TOKEN_FILE_ON_HPCC>",
+  "log_dir": "<HPCC_SCRATCH_ROOT>/runtime/logs",
+  "tmp_dir": "<HPCC_SCRATCH_ROOT>/runtime/tmp",
+  "data_dir": "<HPCC_SCRATCH_ROOT>/runtime/data",
+  "asset_cache_dir": "<HPCC_SCRATCH_ROOT>/cache",
+  "python_executable": "python3",
+  "max_asset_bytes": 20000000000,
+  "data_location_roots": {
+    "hpcc_scratch": "<HPCC_SCRATCH_ROOT>",
+    "landcore_data": "<LANDCORE_DATA_ROOT>"
+  },
+  "enable_gdrive_rclone_provider": true,
+  "rclone_executable": "<RCLONE_EXECUTABLE>",
+  "rclone_config_path": "<RCLONE_CONFIG_PATH>"
+}
