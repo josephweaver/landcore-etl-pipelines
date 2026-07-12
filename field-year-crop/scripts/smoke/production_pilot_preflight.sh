@@ -11,14 +11,19 @@ hpcc_scratch_root="${HPCC_SCRATCH_ROOT:-/mnt/scratch/weave151/etl}"
 landcore_data_root="${LANDCORE_DATA_ROOT:-/mnt/scratch/weave151/data}"
 worker_image="${GORC_GDAL_IMAGE:-/mnt/scratch/weave151/etl/runtime/images/goetl-worker-gdal-os007.sif}"
 geospatial_executable="${GEOSPATIAL_EXECUTABLE:-/goetl/goet-geospatial}"
-years_csv="${PILOT_YEARS:-2010}"
+years_csv="${PILOT_YEARS:-2010,2011}"
 tiles_csv="${PILOT_TILES:-h18v07,h23v08}"
 publication_mode="${PUBLICATION_MODE:-plan_only}"
+publication_scope="${PUBLICATION_SCOPE:-tile_year_summaries}"
 gdrive_remote="${GDRIVE_REMOTE:-gdrive}"
 gdrive_delivery_base_path="${GDRIVE_DELIVERY_BASE_PATH:-Data/ETL/tile-field-year-crop}"
 
 if [[ "$publication_mode" != "plan_only" && "$publication_mode" != "commit_gdrive" ]]; then
   echo "PUBLICATION_MODE must be plan_only or commit_gdrive, got: $publication_mode" >&2
+  exit 2
+fi
+if [[ "$publication_scope" != "delivery_package" && "$publication_scope" != "tile_year_summaries" ]]; then
+  echo "PUBLICATION_SCOPE must be delivery_package or tile_year_summaries, got: $publication_scope" >&2
   exit 2
 fi
 
@@ -53,6 +58,7 @@ PY
 
 echo "controller url: $controller_url"
 echo "publication mode: $publication_mode"
+echo "publication scope: $publication_scope"
 echo "gdrive delivery base path: ${gdrive_delivery_base_path#/}"
 curl -fsS -o /dev/null "$controller_url/healthz"
 echo "controller healthz: passed"

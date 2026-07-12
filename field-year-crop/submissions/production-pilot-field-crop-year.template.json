@@ -7,7 +7,7 @@
   "workflow_template": "field-year-crop/workflows/production-pilot-field-crop-year.workflow.json",
   "workflow_rendered_path": "field-year-crop/.run/production-pilot/<RUN_ID>/production-pilot-field-crop-year.workflow.json",
   "defaults": {
-    "years": [2010],
+    "years": [2010, 2011],
     "cdl_year_range": [2008, 2023],
     "tiles": ["h18v07", "h23v08"],
     "hpcc_scratch_root": "/mnt/scratch/weave151/etl",
@@ -15,14 +15,15 @@
     "product_root": "/mnt/scratch/weave151/etl/publish/field-crop-year/production-pilot/<RUN_ID>",
     "delivery_root": "/mnt/scratch/weave151/etl/publish/field-crop-year-delivery/<RUN_ID>",
     "publication_mode": "plan_only",
+    "publication_scope": "tile_year_summaries",
     "gdrive_remote": "gdrive",
     "gdrive_delivery_base_path": "Data/ETL/tile-field-year-crop"
   },
   "tile_scope_source": "../etl/config/projects.yml:projects.land_core.vars.tiles_of_interest",
   "notes": [
     "Render this template into field-year-crop/.run/production-pilot before submitting.",
-    "The default pilot runs 2010 for h18v07 and h23v08. Override PILOT_YEARS or PILOT_TILES for a larger reviewed run.",
+    "The default pilot runs 2010 and 2011 for h18v07 and h23v08. Override PILOT_YEARS or PILOT_TILES for a larger reviewed run.",
     "CDL production years are 2008 through 2023 inclusive; render/preflight validation rejects years outside that range.",
-    "publication_mode=plan_only is the default. commit_gdrive publishes tile-field-year-crop-delivery.zip under /Data/ETL/tile-field-year-crop/<RUN_ID>/ through the configured rclone remote."
+    "publication_mode=plan_only is the default. PUBLICATION_SCOPE=tile_year_summaries with commit_gdrive publishes one field_crop_year_summary_<YEAR>_<TILE>.csv file under /Data/ETL/tile-field-year-crop/<TILE>/."
   ]
 }

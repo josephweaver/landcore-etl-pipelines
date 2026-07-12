@@ -47,10 +47,11 @@ bash field-year-crop/scripts/smoke/production_pilot_hpcc.sh
 Defaults:
 
 ```text
-years = 2010
+years = 2010,2011
 CDL production year range = 2008-2023
 tiles = h18v07,h23v08
 publication_mode = plan_only
+publication_scope = tile_year_summaries
 gdrive delivery base path = Data/ETL/tile-field-year-crop
 ```
 
@@ -72,17 +73,33 @@ Verified Google Drive publication run:
 
 ```bash
 PUBLICATION_MODE=commit_gdrive \
+PUBLICATION_SCOPE=tile_year_summaries \
 GDRIVE_DELIVERY_BASE_PATH=/Data/ETL/tile-field-year-crop \
-PRODUCTION_PILOT_RUN_ID=os009-gdrive-003 \
+PRODUCTION_PILOT_RUN_ID=os009-summaries-001 \
 bash field-year-crop/scripts/smoke/production_pilot_hpcc.sh
 ```
 
 ```text
-submission = run-b0be8e51b1a7ea6e82a0f55f97738fbd
-delivery root = /mnt/scratch/weave151/etl/publish/field-crop-year-delivery/os009-gdrive-003
+submission = run-892b912717a21428b86c703982f82c27
+production run id = os009-summaries-001
 status = completed
-work items = 10 completed, 0 failed
-delivery validation = passed
-published object = gdrive:Data/ETL/tile-field-year-crop/os009-gdrive-003/tile-field-year-crop-delivery.zip
-published size = 17494297 bytes
+work items = 20 completed, 0 failed
+publication_mode = commit_gdrive
+publication_scope = tile_year_summaries
+publishes one summary CSV per selected year-tile pair:
+gdrive:Data/ETL/tile-field-year-crop/h18v07/field_crop_year_summary_2010_h18v07.csv
+gdrive:Data/ETL/tile-field-year-crop/h23v08/field_crop_year_summary_2010_h23v08.csv
+gdrive:Data/ETL/tile-field-year-crop/h18v07/field_crop_year_summary_2011_h18v07.csv
+gdrive:Data/ETL/tile-field-year-crop/h23v08/field_crop_year_summary_2011_h23v08.csv
 ```
+
+Observed worker behavior: compute stages reached `live_worker_sessions=3`.
+The `publish-summaries` stage uploaded one object at a time because current
+`commit_data` compilation implicitly applies a per-remote `gdrive_rclone`
+upload mutex. That constraint should become an explicit workflow or provider
+configuration choice before recurring production use.
+
+Rclone printed a follow-up warning that the current `gdrive` remote uses
+rclone's shared Google Drive client ID, which rclone reports is being retired
+during 2026. Configure a project-specific client ID before relying on this
+path for recurring production publication.

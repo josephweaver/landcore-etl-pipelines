@@ -3,8 +3,8 @@
   "kind": "Workflow",
   "id": "production-pilot-field-crop-year",
   "variables": {
-    "years": [2010],
-    "years_csv": "2010",
+    "years": [2010, 2011],
+    "years_csv": "2010,2011",
     "cdl_year_min": 2008,
     "cdl_year_max": 2023,
     "tiles": ["h18v07", "h23v08"],
@@ -23,6 +23,7 @@
     "product_root": "/mnt/scratch/weave151/etl/publish/field-crop-year/production-pilot",
     "delivery_root": "/mnt/scratch/weave151/etl/publish/field-crop-year-delivery/production-pilot",
     "publication_mode": "plan_only",
+    "publication_scope": "tile_year_summaries",
     "production_run_id": "production-pilot",
     "gdrive_remote": "gdrive",
     "gdrive_delivery_base_path": "Data/ETL/tile-field-year-crop",
@@ -42,6 +43,22 @@
           "location": {
             "remote": "gdrive",
             "drive_path": "Data/ETL/tile-field-year-crop/${run_id}/tile-field-year-crop-delivery.zip"
+          },
+          "overwrite_policy": "fail_if_exists"
+        }
+      },
+      "field_crop_year_summary_csv": {
+        "kind": "table",
+        "format": "csv",
+        "parameters": {
+          "year": {"type": "int"},
+          "tile": {"type": "string"}
+        },
+        "binding": {
+          "provider": "gdrive_rclone",
+          "location": {
+            "remote": "gdrive",
+            "drive_path": "Data/ETL/tile-field-year-crop/${tile}/field_crop_year_summary_${year}_${tile}.csv"
           },
           "overwrite_policy": "fail_if_exists"
         }
@@ -147,6 +164,36 @@
             "--input-discovery-json=${workflow.product_root}/${pair[1]}/${pair[0]}/metadata/input_discovery.json",
             "--output-json=${workflow.product_root}/${pair[1]}/${pair[0]}/validation/field_crop_year_validation_${pair[0]}_${pair[1]}.json"
           ]
+        }
+      }
+    },
+    {
+      "id": "publish-summaries",
+      "fan_out": {
+        "over": "${workflow.year_tile_pairs[*]}",
+        "as": "pair",
+        "id": "${pair[0]}-${pair[1]}",
+        "output": "${pair[1]}-${pair[0]}"
+      },
+      "data": {
+        "outputs": {
+          "field_crop_year_summary_csv": {
+            "from": {
+              "step": "summarize",
+              "artifact": "field_crop_year_summary_csv"
+            },
+            "target": "field_crop_year_summary_csv",
+            "with": {
+              "year": "${pair[0]}",
+              "tile": "${pair[1]}"
+            }
+          }
+        }
+      },
+      "work": {
+        "type": "commit_data",
+        "parameters": {
+          "target_environment_id": "msu-hpcc-os009"
         }
       }
     },

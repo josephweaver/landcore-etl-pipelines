@@ -58,6 +58,7 @@ def render(
     product_root: str,
     delivery_root: str,
     publication_mode: str,
+    publication_scope: str,
     production_run_id: str,
     gdrive_remote: str,
     gdrive_delivery_base_path: str,
@@ -83,6 +84,7 @@ def render(
     variables["product_root"] = product_root.rstrip("/")
     variables["delivery_root"] = delivery_root.rstrip("/")
     variables["publication_mode"] = publication_mode
+    variables["publication_scope"] = publication_scope
     variables["production_run_id"] = production_run_id
     variables["gdrive_remote"] = gdrive_remote
     variables["gdrive_delivery_base_path"] = drive_base
@@ -98,10 +100,27 @@ def render(
     location = package_output.setdefault("binding", {}).setdefault("location", {})
     location["remote"] = gdrive_remote
     location["drive_path"] = f"{drive_base}/${{run_id}}/tile-field-year-crop-delivery.zip"
+    summary_output = outputs.get("field_crop_year_summary_csv", {})
+    summary_location = summary_output.setdefault("binding", {}).setdefault("location", {})
+    summary_location["remote"] = gdrive_remote
+    summary_location["drive_path"] = f"{drive_base}/${{tile}}/field_crop_year_summary_${{year}}_${{tile}}.csv"
 
     steps = workflow.get("steps", [])
-    if publication_mode == "plan_only":
-        workflow["steps"] = [step for step in steps if step.get("id") != "publish-delivery"]
+    selected_steps = []
+    for step in steps:
+        step_id = step.get("id")
+        if step_id == "publish-delivery" and (
+            publication_mode == "plan_only" or publication_scope != "delivery_package"
+        ):
+            continue
+        if step_id == "publish-summaries" and (
+            publication_mode == "plan_only" or publication_scope != "tile_year_summaries"
+        ):
+            continue
+        if step_id == "package-delivery" and publication_scope == "tile_year_summaries":
+            continue
+        selected_steps.append(step)
+    workflow["steps"] = selected_steps
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(workflow, indent=2) + "\n", encoding="utf-8")
@@ -112,13 +131,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--template", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--project-json", required=True)
-    parser.add_argument("--years", default="2010")
+    parser.add_argument("--years", default="2010,2011")
     parser.add_argument("--tiles", default="h18v07,h23v08")
     parser.add_argument("--hpcc-scratch-root", default="/mnt/scratch/weave151/etl")
     parser.add_argument("--landcore-data-root", default="/mnt/scratch/weave151/data")
     parser.add_argument("--product-root", required=True)
     parser.add_argument("--delivery-root", required=True)
     parser.add_argument("--publication-mode", default="plan_only", choices=["plan_only", "commit_gdrive"])
+    parser.add_argument(
+        "--publication-scope",
+        default="tile_year_summaries",
+        choices=["delivery_package", "tile_year_summaries"],
+    )
     parser.add_argument("--production-run-id", required=True)
     parser.add_argument("--gdrive-remote", default="gdrive")
     parser.add_argument("--gdrive-delivery-base-path", default="Data/ETL/tile-field-year-crop")
@@ -140,6 +164,7 @@ def main(argv: list[str] | None = None) -> int:
         product_root=args.product_root,
         delivery_root=args.delivery_root,
         publication_mode=args.publication_mode,
+        publication_scope=args.publication_scope,
         production_run_id=args.production_run_id,
         gdrive_remote=args.gdrive_remote,
         gdrive_delivery_base_path=args.gdrive_delivery_base_path,

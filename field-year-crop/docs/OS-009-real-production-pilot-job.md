@@ -93,11 +93,11 @@ The first pilot should be small enough to inspect but large enough to prove
 production mechanics:
 
 ```text
-default years: 2010
+default years: 2010, 2011
 CDL production year range: 2008-2023 inclusive
 default tiles: h18v07, h23v08
 minimum work units: 2
-preferred expansion if inputs are confirmed: years 2010, 2011 x tiles h18v07, h23v08
+default expansion: years 2010, 2011 x tiles h18v07, h23v08
 ```
 
 Use h23v08 only after a preflight confirms both the raster data file and `.hdr`
@@ -148,7 +148,7 @@ It must carry explicit lists and derive work units through `list.crossproduct`:
 ```json
 {
   "variables": {
-    "years": [2010],
+    "years": [2010, 2011],
     "tiles": ["h18v07", "h23v08"],
     "year_tile_pairs": {
       "$type": "list",
@@ -279,22 +279,32 @@ mode:
 ```text
 publication_mode = plan_only
 publication_mode = commit_gdrive
+publication_scope = delivery_package
+publication_scope = tile_year_summaries
 ```
 
 `plan_only` writes and validates `gdrive_publish_plan.json` but does not upload.
 
-`commit_gdrive` uses canonical `commit_data` to publish the delivery ZIP through
-`gdrive_rclone` under:
+With `publication_scope=delivery_package`, `commit_gdrive` uses canonical
+`commit_data` to publish the delivery ZIP through `gdrive_rclone` under:
 
 ```text
 gdrive:Data/ETL/tile-field-year-crop/<run-id>/tile-field-year-crop-delivery.zip
 ```
 
+With `publication_scope=tile_year_summaries`, `commit_gdrive` publishes one
+summary CSV per selected year-tile pair and does not run the delivery package or
+ZIP stage:
+
+```text
+gdrive:Data/ETL/tile-field-year-crop/<tile>/field_crop_year_summary_<year>_<tile>.csv
+```
+
 The human-facing final folder is `/Data/ETL/tile-field-year-crop`. The
-configured Google Drive folder ID is `1yu6bx8ZvJTKX0KIC2Nfzuys-wOgjMGu4`. It
-must record uploaded object evidence. If `commit_data` fails because the remote,
-credentials, folder path, or worker image is not configured, record the blocker
-and leave the package on HPCC scratch.
+configured Google Drive folder ID is `1yu6bx8ZvJTKX0KIC2Nfzuys-wOgjMGu4`. The
+workflow must record uploaded object evidence. If `commit_gdrive` fails because
+the remote, credentials, folder path, or worker image is not configured, record
+the blocker and leave the product files on HPCC scratch.
 
 Do not run `commit_gdrive` by default.
 
@@ -481,3 +491,46 @@ queued compiled work items with no dependencies. The fixed controller queues
 activation-stage work items whose dependencies are outside the just-compiled
 stage, which covers prior-stage dependencies without prematurely queueing
 same-stage dependents.
+
+## Verified Summary CSV Publication Run
+
+Verified on 2026-07-12 with `publication_scope=tile_year_summaries` so the
+pilot publishes the per tile-year summary CSVs directly instead of a ZIP:
+
+```text
+submission = run-892b912717a21428b86c703982f82c27
+production run id = os009-summaries-001
+years = 2010,2011
+tiles = h18v07,h23v08
+known work items = 20
+completed = 20
+failed = 0
+publication_mode = commit_gdrive
+publication_scope = tile_year_summaries
+```
+
+Published objects verified with rclone:
+
+```text
+gdrive:Data/ETL/tile-field-year-crop/h18v07/field_crop_year_summary_2010_h18v07.csv = 10278425 bytes
+gdrive:Data/ETL/tile-field-year-crop/h18v07/field_crop_year_summary_2011_h18v07.csv = 10078457 bytes
+gdrive:Data/ETL/tile-field-year-crop/h23v08/field_crop_year_summary_2010_h23v08.csv = 19120109 bytes
+gdrive:Data/ETL/tile-field-year-crop/h23v08/field_crop_year_summary_2011_h23v08.csv = 18957013 bytes
+```
+
+Caretaker behavior matched the expected split between compute and publication:
+
+```text
+compute stages reached live_worker_sessions=3
+publish-summaries completed 4 work items
+publish-summaries had one running upload at a time because current commit_data
+compilation implicitly applies a per-remote gdrive_rclone upload mutex
+```
+
+Follow-up: move the `gdrive_rclone` upload mutex out of implicit compiler
+behavior and into an explicit workflow or provider configuration field.
+
+Rclone warned during verification that the configured `gdrive` remote uses
+rclone's shared Google Drive client ID, which rclone reports is being retired
+during 2026. Production operation should switch that remote to a
+project-specific client ID before recurring publication.

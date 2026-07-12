@@ -21,9 +21,10 @@ hpcc_scratch_root="${HPCC_SCRATCH_ROOT:-/mnt/scratch/weave151/etl}"
 landcore_data_root="${LANDCORE_DATA_ROOT:-/mnt/scratch/weave151/data}"
 product_root="${PRODUCT_ROOT:-$hpcc_scratch_root/publish/field-crop-year/production-pilot/$run_id}"
 delivery_root="${DELIVERY_ROOT:-$hpcc_scratch_root/publish/field-crop-year-delivery/$run_id}"
-years_csv="${PILOT_YEARS:-2010}"
+years_csv="${PILOT_YEARS:-2010,2011}"
 tiles_csv="${PILOT_TILES:-h18v07,h23v08}"
 publication_mode="${PUBLICATION_MODE:-plan_only}"
+publication_scope="${PUBLICATION_SCOPE:-tile_year_summaries}"
 gdrive_remote="${GDRIVE_REMOTE:-gdrive}"
 gdrive_delivery_base_path="${GDRIVE_DELIVERY_BASE_PATH:-Data/ETL/tile-field-year-crop}"
 geospatial_executable="${GEOSPATIAL_EXECUTABLE:-/goetl/goet-geospatial}"
@@ -44,9 +45,10 @@ Required environment:
 
 Optional:
   CONTROLLER_URL                 Default: https://34-10-225-164.sslip.io
-  PILOT_YEARS                    Default: 2010
+  PILOT_YEARS                    Default: 2010,2011
   PILOT_TILES                    Default: h18v07,h23v08
   PUBLICATION_MODE               Default: plan_only
+  PUBLICATION_SCOPE              Default: tile_year_summaries
   GDRIVE_DELIVERY_BASE_PATH      Default: Data/ETL/tile-field-year-crop
 EOF
 }
@@ -140,6 +142,7 @@ render_workflow() {
     --product-root "$product_root" \
     --delivery-root "$delivery_root" \
     --publication-mode "$publication_mode" \
+    --publication-scope "$publication_scope" \
     --production-run-id "$run_id" \
     --gdrive-remote "$gdrive_remote" \
     --gdrive-delivery-base-path "$gdrive_delivery_base_path" \
@@ -165,6 +168,7 @@ if [[ "${SKIP_PRODUCTION_PILOT_PREFLIGHT:-0}" != "1" ]]; then
   PILOT_TILES="$tiles_csv" \
   GEOSPATIAL_EXECUTABLE="$geospatial_executable" \
   PUBLICATION_MODE="$publication_mode" \
+  PUBLICATION_SCOPE="$publication_scope" \
   GDRIVE_REMOTE="$gdrive_remote" \
   GDRIVE_DELIVERY_BASE_PATH="$gdrive_delivery_base_path" \
     bash "$root_dir/field-year-crop/scripts/smoke/production_pilot_preflight.sh"
@@ -238,25 +242,33 @@ set +e
 worker_start_evidence="$("$ssh_bin" -o BatchMode=yes -o ConnectTimeout=20 "$controller_ssh_host" "sudo journalctl -u gorc-controller --since '1 hour ago' --no-pager | grep -E 'worker_start_requested|worker_start_confirmed_by_registration|worker_capacity_evaluation' | tail -40" 2>/dev/null)"
 set -e
 
-python3 - "$run_report" "$submission_id" "$run_id" "$workflow_rendered" "$years_csv" "$tiles_csv" "$product_root" "$delivery_root" "$publication_mode" "$gdrive_remote" "$gdrive_delivery_base_path" "$status_log" "$worker_start_evidence" <<'PY'
+python3 - "$run_report" "$submission_id" "$run_id" "$workflow_rendered" "$years_csv" "$tiles_csv" "$product_root" "$delivery_root" "$publication_mode" "$publication_scope" "$gdrive_remote" "$gdrive_delivery_base_path" "$status_log" "$worker_start_evidence" <<'PY'
 import json
 import sys
 from pathlib import Path
 
+years = [int(item) for item in sys.argv[5].split(",") if item]
+tiles = [item for item in sys.argv[6].split(",") if item]
+drive_base = sys.argv[12].strip("/")
 report = {
     "submission_id": sys.argv[2],
     "production_run_id": sys.argv[3],
     "workflow_rendered": sys.argv[4],
-    "years": [int(item) for item in sys.argv[5].split(",") if item],
-    "tiles": [item for item in sys.argv[6].split(",") if item],
+    "years": years,
+    "tiles": tiles,
     "product_root": sys.argv[7],
     "delivery_root": sys.argv[8],
     "publication_mode": sys.argv[9],
-    "gdrive_remote": sys.argv[10],
-    "gdrive_delivery_base_path": sys.argv[11],
-    "gdrive_delivery_zip_path": f"{sys.argv[11].strip('/')}/{sys.argv[3]}/tile-field-year-crop-delivery.zip",
-    "status_log": sys.argv[12],
-    "worker_start_evidence": sys.argv[13].splitlines() if sys.argv[13] else [],
+    "publication_scope": sys.argv[10],
+    "gdrive_remote": sys.argv[11],
+    "gdrive_delivery_base_path": sys.argv[12],
+    "gdrive_summary_paths": [
+        f"{drive_base}/{tile}/field_crop_year_summary_{year}_{tile}.csv"
+        for year in years
+        for tile in tiles
+    ],
+    "status_log": sys.argv[13],
+    "worker_start_evidence": sys.argv[14].splitlines() if sys.argv[14] else [],
 }
 report["expected_year_tile_pairs"] = len(report["years"]) * len(report["tiles"])
 Path(sys.argv[1]).write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")

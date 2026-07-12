@@ -33,6 +33,9 @@ and SHA-256 hashes for package files.
 
 `gdrive_publish_plan.json` lists source package paths and target object paths
 for the configured Drive folder. In `publication_mode=plan_only`, it is a plan
-only. In `publication_mode=commit_gdrive`, GORC publishes
-`tile-field-year-crop-delivery.zip` to the configured rclone path under
+only. In `publication_mode=commit_gdrive` with
+`publication_scope=tile_year_summaries`, GORC publishes only the per tile-year
+summary CSV files under `Data/ETL/tile-field-year-crop/<tile>/`. In
+`publication_scope=delivery_package`, GORC publishes
+`tile-field-year-crop-delivery.zip` under
 `Data/ETL/tile-field-year-crop/<run-id>/`.
