@@ -22,7 +22,7 @@ Reserve 5.5 for review, blocker diagnosis, or redesign.
 | OS-006 fake HPCC graduation | 5.4 | medium | Runtime/environment failures are likely; not ideal for Spark. |
 | OS-007 real HPCC one-tile preflight | 5.4 | high | External environment and Singularity/Slurm path issues. |
 | OS-008 production tiling and delivery | 5.4-mini | medium | Mostly workflow expansion, merge scripts, docs, delivery packaging. Use 5.4 if fanout/resource constraints get complicated. |
-| OS-009 Google Drive source and publication connector trial | 5.4 | high | Real rclone, worker-local credentials, Shared Drive source access, Drive folder publication, and redaction checks are external-runtime heavy. |
+| OS-009 real production pilot job | 5.4 | high | Real Google VM/HPCC execution, canonical fanout, staged data dependencies, worker scale-out, delivery packaging, and optional gdrive_rclone publication are external-runtime heavy. |
 | Cross-slice review | 5.5 | medium or high | Use only after 2-3 OS slices or when architecture ambiguity appears. |
 
 ## Suggested Cadence
@@ -42,10 +42,11 @@ Inspect field/crop counts and summaries.
 
 Only then move to fake HPCC and real HPCC.
 
-Treat OS-009 as a late, optional connector proof. Do not let Google Drive setup
-block OS-004 through OS-008; use `local_file` or `registered_location` for
-Yan/Roy input acquisition and a local delivery package until the rclone
-credential and publication paths are proven.
+Treat OS-009 as the first real production pilot, not full production. Keep
+Google Drive input and publication optional modes inside that pilot; use
+`local_file` or `registered_location` for Yan/Roy input acquisition and an HPCC
+scratch delivery package until the rclone credential and publication paths are
+proven.
 ```
 
 ## Smoke-Test Caution

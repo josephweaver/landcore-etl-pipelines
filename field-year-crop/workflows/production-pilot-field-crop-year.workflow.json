@@ -1,0 +1,276 @@
+{
+  "api_version": "goet/v1alpha1",
+  "kind": "Workflow",
+  "id": "production-pilot-field-crop-year",
+  "variables": {
+    "years": [2010],
+    "years_csv": "2010",
+    "cdl_year_min": 2008,
+    "cdl_year_max": 2023,
+    "tiles": ["h18v07", "h23v08"],
+    "tiles_csv": "h18v07,h23v08",
+    "year_tile_pairs": {
+      "$type": "list",
+      "$call": "list.crossproduct",
+      "$args": [
+        {"$ref": "years"},
+        {"$ref": "tiles"}
+      ]
+    },
+    "package_runs": ["delivery"],
+    "hpcc_scratch_root": "/mnt/scratch/weave151/etl",
+    "landcore_data_root": "/mnt/scratch/weave151/data",
+    "product_root": "/mnt/scratch/weave151/etl/publish/field-crop-year/production-pilot",
+    "delivery_root": "/mnt/scratch/weave151/etl/publish/field-crop-year-delivery/production-pilot",
+    "publication_mode": "plan_only",
+    "production_run_id": "production-pilot",
+    "gdrive_remote": "gdrive",
+    "gdrive_delivery_base_path": "Data/ETL/tile-field-year-crop",
+    "gorc_commit": "unknown",
+    "geospatial_executable": "/goetl/goet-geospatial"
+  },
+  "data": {
+    "outputs": {
+      "field_year_crop_delivery_package": {
+        "kind": "archive",
+        "format": "zip",
+        "parameters": {
+          "run_id": {"type": "string"}
+        },
+        "binding": {
+          "provider": "gdrive_rclone",
+          "location": {
+            "remote": "gdrive",
+            "drive_path": "Data/ETL/tile-field-year-crop/${run_id}/tile-field-year-crop-delivery.zip"
+          },
+          "overwrite_policy": "fail_if_exists"
+        }
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "align",
+      "fan_out": {
+        "over": "${workflow.year_tile_pairs[*]}",
+        "as": "pair",
+        "id": "${pair[0]}-${pair[1]}",
+        "output": "${pair[1]}-${pair[0]}"
+      },
+      "work": {
+        "type": "python_script",
+        "output_prefix": "field_crop_year_align",
+        "output_extension": ".json",
+        "parameters": {
+          "python_entrypoint": "field-year-crop/scripts/python/run_align_to_grid.py",
+          "python_args": [
+            "--cdl-asset-path=${workflow.hpcc_scratch_root}/source/cdl-${pair[0]}",
+            "--yanroy-raster=${workflow.landcore_data_root}/${pair[1]}/WELD_${pair[1]}_2010_field_segments",
+            "--geospatial-executable=${workflow.geospatial_executable}",
+            "--year=${pair[0]}",
+            "--tile=${pair[1]}",
+            "--output-root=${workflow.product_root}/${pair[1]}/${pair[0]}"
+          ]
+        }
+      }
+    },
+    {
+      "id": "pair-counts",
+      "fan_out": {
+        "over": "${workflow.year_tile_pairs[*]}",
+        "as": "pair",
+        "id": "${pair[0]}-${pair[1]}",
+        "output": "${pair[1]}-${pair[0]}"
+      },
+      "work": {
+        "type": "python_script",
+        "output_prefix": "field_crop_year_counts",
+        "output_extension": ".json",
+        "parameters": {
+          "python_entrypoint": "field-year-crop/scripts/python/run_numpy_pair_counts.py",
+          "python_args": [
+            "--field-raster=${workflow.product_root}/${pair[1]}/${pair[0]}/aligned/yanroy_${pair[1]}_uint32.tif",
+            "--value-raster=${workflow.product_root}/${pair[1]}/${pair[0]}/aligned/cdl_${pair[0]}_on_${pair[1]}_grid.tif",
+            "--year=${pair[0]}",
+            "--counts-csv=${workflow.product_root}/${pair[1]}/${pair[0]}/counts/field_crop_counts_${pair[0]}_${pair[1]}.csv",
+            "--metadata-json=${workflow.product_root}/${pair[1]}/${pair[0]}/counts/field_crop_counts_${pair[0]}_${pair[1]}.metadata.json",
+            "--request-json=${workflow.product_root}/${pair[1]}/${pair[0]}/counts/field_crop_counts_${pair[0]}_${pair[1]}.request.json"
+          ]
+        }
+      }
+    },
+    {
+      "id": "summarize",
+      "fan_out": {
+        "over": "${workflow.year_tile_pairs[*]}",
+        "as": "pair",
+        "id": "${pair[0]}-${pair[1]}",
+        "output": "${pair[1]}-${pair[0]}"
+      },
+      "work": {
+        "type": "python_script",
+        "output_prefix": "field_crop_year_summary",
+        "output_extension": ".json",
+        "parameters": {
+          "python_entrypoint": "field-year-crop/scripts/python/summarize_field_crop_counts.py",
+          "python_args": [
+            "--counts-csv=${workflow.product_root}/${pair[1]}/${pair[0]}/counts/field_crop_counts_${pair[0]}_${pair[1]}.csv",
+            "--year=${pair[0]}",
+            "--output-csv=${workflow.product_root}/${pair[1]}/${pair[0]}/summary/field_crop_year_summary_${pair[0]}_${pair[1]}.csv",
+            "--metadata-json=${workflow.product_root}/${pair[1]}/${pair[0]}/summary/field_crop_year_summary_${pair[0]}_${pair[1]}.metadata.json"
+          ]
+        }
+      }
+    },
+    {
+      "id": "validate",
+      "fan_out": {
+        "over": "${workflow.year_tile_pairs[*]}",
+        "as": "pair",
+        "id": "${pair[0]}-${pair[1]}",
+        "output": "${pair[1]}-${pair[0]}"
+      },
+      "work": {
+        "type": "python_script",
+        "output_prefix": "field_crop_year_validation",
+        "output_extension": ".json",
+        "parameters": {
+          "python_entrypoint": "field-year-crop/scripts/python/validate_field_crop_year_product.py",
+          "python_args": [
+            "--counts-csv=${workflow.product_root}/${pair[1]}/${pair[0]}/counts/field_crop_counts_${pair[0]}_${pair[1]}.csv",
+            "--summary-csv=${workflow.product_root}/${pair[1]}/${pair[0]}/summary/field_crop_year_summary_${pair[0]}_${pair[1]}.csv",
+            "--year=${pair[0]}",
+            "--raster-info-json=${workflow.product_root}/${pair[1]}/${pair[0]}/metadata/raster_info.json",
+            "--alignment-metadata-json=${workflow.product_root}/${pair[1]}/${pair[0]}/aligned/cdl_${pair[0]}_on_${pair[1]}_grid.metadata.json",
+            "--counts-metadata-json=${workflow.product_root}/${pair[1]}/${pair[0]}/counts/field_crop_counts_${pair[0]}_${pair[1]}.metadata.json",
+            "--summary-metadata-json=${workflow.product_root}/${pair[1]}/${pair[0]}/summary/field_crop_year_summary_${pair[0]}_${pair[1]}.metadata.json",
+            "--input-discovery-json=${workflow.product_root}/${pair[1]}/${pair[0]}/metadata/input_discovery.json",
+            "--output-json=${workflow.product_root}/${pair[1]}/${pair[0]}/validation/field_crop_year_validation_${pair[0]}_${pair[1]}.json"
+          ]
+        }
+      }
+    },
+    {
+      "id": "package-delivery",
+      "fan_out": {
+        "over": "${workflow.package_runs[*]}",
+        "as": "package_run",
+        "id": "${package_run}",
+        "output": "${package_run}"
+      },
+      "work": {
+        "type": "python_script",
+        "output_prefix": "field_crop_year_delivery",
+        "output_extension": ".json",
+        "parameters": {
+          "python_entrypoint": "field-year-crop/scripts/python/package_production_pilot_delivery.py",
+          "python_args": [
+            "--years=${workflow.years_csv}",
+            "--tiles=${workflow.tiles_csv}",
+            "--product-root=${workflow.product_root}",
+            "--delivery-root=${workflow.delivery_root}",
+            "--workflow=field-year-crop/workflows/production-pilot-field-crop-year.workflow.json",
+            "--project-json=land-core.project.json",
+            "--gorc-commit=${workflow.gorc_commit}",
+            "--production-run-id=${workflow.production_run_id}",
+            "--publication-mode=${workflow.publication_mode}",
+            "--gdrive-target-drive-path=${workflow.gdrive_delivery_base_path}"
+          ]
+        }
+      }
+    },
+    {
+      "id": "publish-delivery",
+      "fan_out": {
+        "over": "${workflow.package_runs[*]}",
+        "as": "package_run",
+        "id": "${package_run}",
+        "output": "${package_run}"
+      },
+      "data": {
+        "outputs": {
+          "field_year_crop_delivery_package": {
+            "from": {
+              "step": "package-delivery",
+              "artifact": "field_year_crop_delivery_package"
+            },
+            "target": "field_year_crop_delivery_package",
+            "with": {
+              "run_id": "${workflow.production_run_id}"
+            }
+          }
+        }
+      },
+      "work": {
+        "type": "commit_data",
+        "parameters": {
+          "target_environment_id": "msu-hpcc-os009"
+        }
+      }
+    }
+  ],
+  "source_manifest": {
+    "files": [
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/run_align_to_grid.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/run_numpy_pair_counts.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/summarize_field_crop_counts.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/validate_field_crop_year_product.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/package_production_pilot_delivery.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/discover_raster_asset.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/field_crop_common.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/merge_field_crop_year_outputs.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/write_delivery_manifest.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/write_gdrive_publish_plan.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/validate_delivery_package.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "land-core.project.json",
+        "content_type": "application/json"
+      }
+    ]
+  }
+}

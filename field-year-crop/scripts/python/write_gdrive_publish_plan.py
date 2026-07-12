@@ -13,6 +13,7 @@ DEFAULT_GDRIVE_FOLDER_ID = "1yu6bx8ZvJTKX0KIC2Nfzuys-wOgjMGu4"
 DEFAULT_GDRIVE_FOLDER_URL = (
     "https://drive.google.com/drive/folders/1yu6bx8ZvJTKX0KIC2Nfzuys-wOgjMGu4?usp=drive_link"
 )
+DEFAULT_TARGET_DRIVE_PATH = "Data/ETL/tile-field-year-crop"
 
 
 def load_manifest(path: Path) -> dict[str, Any]:
@@ -28,6 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output-json", required=True)
     parser.add_argument("--target-folder-id", default=DEFAULT_GDRIVE_FOLDER_ID)
     parser.add_argument("--target-folder-url", default=DEFAULT_GDRIVE_FOLDER_URL)
+    parser.add_argument("--target-drive-path", default=DEFAULT_TARGET_DRIVE_PATH)
     return parser
 
 
@@ -51,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         "schema": "landcore/tile-field-year-crop-gdrive-publish-plan/v1",
         "target_folder_id": args.target_folder_id,
         "target_folder_url": args.target_folder_url,
+        "target_drive_path": args.target_drive_path.strip("/"),
         "source_delivery_manifest": manifest_path.name,
         "objects": objects,
     }

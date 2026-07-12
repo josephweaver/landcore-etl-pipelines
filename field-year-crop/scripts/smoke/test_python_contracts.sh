@@ -119,6 +119,8 @@ python3 -m py_compile \
   "$root_dir/scripts/python/run_align_to_grid.py" \
   "$root_dir/scripts/python/run_geospatial_pair_counts.py" \
   "$root_dir/scripts/python/run_numpy_pair_counts.py" \
+  "$root_dir/scripts/python/package_production_pilot_delivery.py" \
+  "$root_dir/scripts/python/render_production_pilot_submission.py" \
   "$root_dir/scripts/python/run_raster_info.py" \
   "$root_dir/scripts/python/write_geospatial_request.py" \
   "$root_dir/scripts/python/summarize_field_crop_counts.py" \

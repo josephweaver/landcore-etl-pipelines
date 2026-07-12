@@ -10,4 +10,4 @@
 | OS-006 | verified | fake HPCC synthetic graduation passed with generated inline workflow and fake Slurm workers |
 | OS-007 | verified | external HTTPS controller preflight passed; HPCC h18v07 2010 one-tile run completed with validation status passed |
 | OS-008 | implemented | production packaging scripts, delivery manifest, Google Drive publish plan, and tiny dry run added |
-| OS-009 | proposed | Google Drive connector trial |
+| OS-009 | verified | production pilot `run-dcbf2b84ffb9fc1b49abdeec34960188` completed on Google VM/HPCC for 2010 x h18v07,h23v08 with 9/9 work items completed, delivery validation passed, 631857 merged counts/summary rows, 18 planned gdrive publish objects, and caretaker evidence of two live worker sessions; publication pilot `run-b0be8e51b1a7ea6e82a0f55f97738fbd` completed 10/10 work items and published `tile-field-year-crop-delivery.zip` to `gdrive:Data/ETL/tile-field-year-crop/os009-gdrive-003/` |

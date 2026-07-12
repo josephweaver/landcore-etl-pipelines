@@ -36,6 +36,7 @@ Google Drive file ID: 1YmFECConwSlAFEaMDzyL_srhwVfeTRBy
 The intended production publication target for tile-field-year-crop outputs is:
 
 ```text
+/Data/ETL/tile-field-year-crop
 https://drive.google.com/drive/folders/1yu6bx8ZvJTKX0KIC2Nfzuys-wOgjMGu4?usp=drive_link
 Google Drive folder ID: 1yu6bx8ZvJTKX0KIC2Nfzuys-wOgjMGu4
 ```
@@ -309,7 +310,7 @@ Gate 2: Local real-input pilot: /tmp/h18v07.hdr + 2010 CDL ZIP
 Gate 3: Fake-HPCC execution
 Gate 4: Real HPCC one-tile run
 Gate 5: Production tiling/year expansion
-Gate 6: Optional Google Drive source and publication connector trial
+Gate 6: Real production pilot with optional Google Drive source and publication
 ```
 
 The first working product should be small, inspectable, and reproducible. Do not start with a full production run.
@@ -621,8 +622,9 @@ The Yan/Roy tile `h18v07` may not overlap the target CDL raster extent or may us
 6. Fake HPCC run.
 7. Real HPCC one-tile preflight/run.
 8. Production tiling, delivery, and provenance package.
-9. Late Google Drive source and publication connector trial for the Yan/Roy
-   release file and tile-field-year-crop publication folder.
+9. Real production pilot job on the Google VM/HPCC environment, with optional
+   Google Drive source and publication modes for the Yan/Roy release file and
+   tile-field-year-crop publication folder.
 
 ## Non-Goals
 

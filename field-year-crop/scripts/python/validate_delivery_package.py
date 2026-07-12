@@ -13,6 +13,7 @@ from merge_field_crop_year_outputs import load_work_units
 
 
 EXPECTED_FOLDER_ID = "1yu6bx8ZvJTKX0KIC2Nfzuys-wOgjMGu4"
+EXPECTED_DRIVE_PATH = "Data/ETL/tile-field-year-crop"
 PRIVATE_INPUT_SUFFIXES = (".tif", ".tiff", ".img", ".bil", ".hdr")
 
 
@@ -75,6 +76,8 @@ def main(argv: list[str] | None = None) -> int:
     allowed_tiles = set(manifest.get("tiles_of_interest", []))
     if publish_plan.get("target_folder_id") != EXPECTED_FOLDER_ID:
         raise ValueError("unexpected Google Drive target folder")
+    if publish_plan.get("target_drive_path") != EXPECTED_DRIVE_PATH:
+        raise ValueError("unexpected Google Drive target drive path")
     if manifest.get("publication", {}).get("folder_id") != EXPECTED_FOLDER_ID:
         raise ValueError("manifest publication folder mismatch")
 

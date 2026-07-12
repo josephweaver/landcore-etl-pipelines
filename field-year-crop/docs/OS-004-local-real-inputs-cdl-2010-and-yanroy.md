@@ -21,7 +21,7 @@ This slice proves input visibility and metadata. It does not need to produce fin
 
 This slice may use a manually staged local Yan/Roy file or a configured
 registered location. Do not make real Google Drive access a requirement here;
-OS-009 owns the credentialed `gdrive_rclone` connector trial.
+OS-009 may enable credentialed `gdrive_rclone` as part of the production pilot.
 
 ## Allowed Files
 
@@ -118,7 +118,8 @@ controller:
 }
 ```
 
-The actual Google Drive/rclone proof remains OS-009.
+The actual Google Drive/rclone proof remains a production-pilot option in
+OS-009.
 
 ## Metadata Step
 

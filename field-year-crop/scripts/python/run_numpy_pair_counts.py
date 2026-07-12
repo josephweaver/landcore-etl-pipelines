@@ -22,6 +22,7 @@ gdal.UseExceptions()
 
 COUNTS_ARTIFACT = "field_crop_year_counts.csv"
 COUNTS_METADATA_ARTIFACT = "field_crop_year_counts.metadata.json"
+COUNTS_REQUEST_ARTIFACT = "field_crop_year_counts.request.json"
 UINT32_MAX = (1 << 32) - 1
 
 
@@ -33,6 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--artifact-dir")
     parser.add_argument("--counts-csv")
     parser.add_argument("--metadata-json")
+    parser.add_argument("--request-json")
     parser.add_argument("--field-nodata", type=int, default=0)
     parser.add_argument("--value-nodata", type=int, default=0)
     parser.add_argument("--chunk-rows", type=int, default=1024)
@@ -154,6 +156,21 @@ def write_counts_csv(path: Path, counts: dict[int, int]) -> None:
             writer.writerow([field_id, crop_id, count])
 
 
+def pair_counts_request_payload(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "operation": "raster_pair_value_counts",
+        "field_raster": args.field_raster,
+        "value_raster": args.value_raster,
+        "require_aligned_grid": True,
+        "chunk_rows": args.chunk_rows,
+        "field_dtype": "uint32",
+        "value_dtype": "uint32",
+        "field_nodata": args.field_nodata,
+        "value_nodata": args.value_nodata,
+        "include_value_nodata": args.include_value_nodata,
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.chunk_rows <= 0:
@@ -164,6 +181,8 @@ def main(argv: list[str] | None = None) -> int:
     artifact_dir = artifact_dir_path(args.artifact_dir)
     counts_path = artifact_dir / COUNTS_ARTIFACT
     metadata_path = artifact_dir / COUNTS_METADATA_ARTIFACT
+    request_path = artifact_dir / COUNTS_REQUEST_ARTIFACT
+    write_json(request_path, pair_counts_request_payload(args))
 
     started = time.monotonic()
     field_ds = open_raster(Path(args.field_raster), "field raster")
@@ -226,8 +245,10 @@ def main(argv: list[str] | None = None) -> int:
 
     shared_counts_path = Path(args.counts_csv).expanduser() if args.counts_csv else counts_path
     shared_metadata_path = Path(args.metadata_json).expanduser() if args.metadata_json else metadata_path
+    shared_request_path = Path(args.request_json).expanduser() if args.request_json else request_path
     copy_if_needed(counts_path, shared_counts_path)
     copy_if_needed(metadata_path, shared_metadata_path)
+    copy_if_needed(request_path, shared_request_path)
 
     write_json(
         worker_output_path(),
@@ -245,11 +266,18 @@ def main(argv: list[str] | None = None) -> int:
                     "format": "json",
                     "path": COUNTS_METADATA_ARTIFACT,
                 },
+                {
+                    "name": "field_crop_year_counts_request_json",
+                    "kind": "file",
+                    "format": "json",
+                    "path": COUNTS_REQUEST_ARTIFACT,
+                },
             ],
             "summary": {
                 "year": args.year,
                 "counts_csv": shared_counts_path.as_posix(),
                 "metadata_json": shared_metadata_path.as_posix(),
+                "request_json": shared_request_path.as_posix(),
                 "valid_pixels": valid_pixels,
                 "distinct_pairs": len(counts),
                 "field_id_dtype": "uint32",

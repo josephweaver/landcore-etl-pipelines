@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare real inputs and align CDL 2010 to the Yan/Roy h18v07 grid."""
+"""Prepare real inputs and align a CDL year raster to a Yan/Roy tile grid."""
 
 from __future__ import annotations
 
@@ -20,9 +20,18 @@ RASTER_INFO_RESPONSE_ARTIFACT = "raster_info.response.json"
 ALIGN_REQUEST_ARTIFACT = "metadata/align_to_grid.request.json"
 ALIGN_RESPONSE_ARTIFACT = "align_to_grid.response.json"
 DISCOVERY_ARTIFACT = "metadata/input_discovery.json"
-ALIGNED_CDL_ARTIFACT = "aligned/cdl_2010_on_h18v07_grid.tif"
-ALIGNED_CDL_METADATA_ARTIFACT = "aligned/cdl_2010_on_h18v07_grid.metadata.json"
-YANROY_UINT32_ARTIFACT = "aligned/yanroy_h18v07_uint32.tif"
+
+
+def aligned_cdl_artifact(year: int, tile: str) -> str:
+    return f"aligned/cdl_{year}_on_{tile}_grid.tif"
+
+
+def aligned_cdl_metadata_artifact(year: int, tile: str) -> str:
+    return f"aligned/cdl_{year}_on_{tile}_grid.metadata.json"
+
+
+def yanroy_uint32_artifact(tile: str) -> str:
+    return f"aligned/yanroy_{tile}_uint32.tif"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +39,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--cdl-asset-path", required=True)
     parser.add_argument("--yanroy-raster", required=True)
     parser.add_argument("--geospatial-executable", required=True)
+    parser.add_argument("--year", type=int, default=2010)
+    parser.add_argument("--tile", default="h18v07")
     parser.add_argument("--artifact-dir")
     parser.add_argument("--output-root")
     return parser
@@ -104,21 +115,21 @@ def run_geospatial(
         return json.load(handle)
 
 
-def raster_info_request(cdl_raster: Path, yanroy_raster: Path) -> dict[str, Any]:
+def raster_info_request(cdl_raster: Path, yanroy_raster: Path, year: int, tile: str) -> dict[str, Any]:
     return {
         "api_version": "goet.geospatial/v1alpha1",
         "kind": "GeospatialOperationRequest",
         "operation": "raster_info",
         "inputs": {
-            "cdl_2010": {"path": str(cdl_raster), "band": 1},
-            "yanroy_h18v07": {"path": str(yanroy_raster), "band": 1},
+            f"cdl_{year}": {"path": str(cdl_raster), "band": 1},
+            f"yanroy_{tile}": {"path": str(yanroy_raster), "band": 1},
         },
         "outputs": {"metadata_json": RASTER_INFO_ARTIFACT},
         "options": {},
     }
 
 
-def align_request(cdl_raster: Path, target: dict[str, Any]) -> dict[str, Any]:
+def align_request(cdl_raster: Path, target: dict[str, Any], year: int, tile: str) -> dict[str, Any]:
     return {
         "api_version": "goet.geospatial/v1alpha1",
         "kind": "GeospatialOperationRequest",
@@ -131,8 +142,8 @@ def align_request(cdl_raster: Path, target: dict[str, Any]) -> dict[str, Any]:
             }
         },
         "outputs": {
-            "raster_tif": ALIGNED_CDL_ARTIFACT,
-            "metadata_json": ALIGNED_CDL_METADATA_ARTIFACT,
+            "raster_tif": aligned_cdl_artifact(year, tile),
+            "metadata_json": aligned_cdl_metadata_artifact(year, tile),
         },
         "options": {
             "target_crs": target["crs_wkt"],
@@ -256,7 +267,11 @@ def main(argv: list[str] | None = None) -> int:
     max_field_id = int(max_value)
 
     target = yanroy_target_grid(yanroy_raster)
-    yanroy_uint32 = artifact_dir / YANROY_UINT32_ARTIFACT
+    yanroy_uint32_relative = yanroy_uint32_artifact(args.tile)
+    aligned_cdl_relative = aligned_cdl_artifact(args.year, args.tile)
+    aligned_cdl_metadata_relative = aligned_cdl_metadata_artifact(args.year, args.tile)
+
+    yanroy_uint32 = artifact_dir / yanroy_uint32_relative
     create_uint32_yanroy(yanroy_raster, yanroy_uint32)
 
     raster_info_response = run_geospatial(
@@ -264,7 +279,7 @@ def main(argv: list[str] | None = None) -> int:
         artifact_dir,
         "metadata/raster_info.request.json",
         RASTER_INFO_RESPONSE_ARTIFACT,
-        raster_info_request(cdl_raster, yanroy_uint32),
+        raster_info_request(cdl_raster, yanroy_uint32, args.year, args.tile),
     )
     raster_metadata = load_raster_info(artifact_dir / RASTER_INFO_ARTIFACT)
 
@@ -273,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
         artifact_dir,
         ALIGN_REQUEST_ARTIFACT,
         ALIGN_RESPONSE_ARTIFACT,
-        align_request(cdl_raster, target),
+        align_request(cdl_raster, target, args.year, args.tile),
     )
 
     discovery_payload = {
@@ -282,15 +297,17 @@ def main(argv: list[str] | None = None) -> int:
         "cdl_raster_candidates": [str(candidate) for candidate in cdl_candidates],
         "yanroy_raster_path": str(yanroy_raster),
         "yanroy_uint32_raster_path": str(yanroy_uint32),
+        "year": args.year,
+        "tile": args.tile,
         "yanroy_field_id_range": {
             "min": min_field_id,
             "max": max_field_id,
             "source_dtype": source_dtype,
             "field_dtype": "uint32",
-            "uint32_working_copy": YANROY_UINT32_ARTIFACT,
+            "uint32_working_copy": yanroy_uint32_relative,
         },
         "metadata_summary": raster_metadata,
-        "target_grid_source": "yanroy_h18v07_explicit_wkt_transform",
+        "target_grid_source": f"yanroy_{args.tile}_explicit_wkt_transform",
         "geospatial_responses": {
             "raster_info": raster_info_response,
             "align_to_grid": align_response,
@@ -305,24 +322,26 @@ def main(argv: list[str] | None = None) -> int:
         "artifacts": [
             artifact_descriptor("input_discovery_json", "file", "json", DISCOVERY_ARTIFACT),
             artifact_descriptor("raster_info_json", "file", "json", RASTER_INFO_ARTIFACT),
-            artifact_descriptor("aligned_cdl_tif", "file", "geotiff", ALIGNED_CDL_ARTIFACT),
+            artifact_descriptor("aligned_cdl_tif", "file", "geotiff", aligned_cdl_relative),
             artifact_descriptor(
                 "aligned_cdl_metadata_json",
                 "file",
                 "json",
-                ALIGNED_CDL_METADATA_ARTIFACT,
+                aligned_cdl_metadata_relative,
             ),
-            artifact_descriptor("yanroy_uint32_tif", "file", "geotiff", YANROY_UINT32_ARTIFACT),
+            artifact_descriptor("yanroy_uint32_tif", "file", "geotiff", yanroy_uint32_relative),
         ],
         "summary": {
             "cdl_primary_raster_path": str(cdl_raster),
             "yanroy_raster_path": str(yanroy_raster),
-            "yanroy_uint32_raster_path": str(output_root / YANROY_UINT32_ARTIFACT)
+            "year": args.year,
+            "tile": args.tile,
+            "yanroy_uint32_raster_path": str(output_root / yanroy_uint32_relative)
             if output_root is not None
             else str(yanroy_uint32),
-            "aligned_cdl_raster_path": str(output_root / ALIGNED_CDL_ARTIFACT)
+            "aligned_cdl_raster_path": str(output_root / aligned_cdl_relative)
             if output_root is not None
-            else str(artifact_dir / ALIGNED_CDL_ARTIFACT),
+            else str(artifact_dir / aligned_cdl_relative),
             "yanroy_field_id_max": max_field_id,
         },
     }

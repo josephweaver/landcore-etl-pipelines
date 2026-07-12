@@ -32,6 +32,7 @@ RUN apt-get update \
         python3 \
         python3-gdal \
         python3-numpy \
+        rclone \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /goetl

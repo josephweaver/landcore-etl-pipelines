@@ -74,6 +74,15 @@ numpy
 7z/7za/7zr
 ```
 
+For production pilot runs that enable Google Drive input or publication, use the
+rclone-capable worker image:
+
+```text
+/mnt/scratch/weave151/etl/runtime/images/goetl-worker-gdal-os007-rclone.sif
+```
+
+It contains the OS-007 GDAL/Numpy/7z runtime plus `/usr/bin/rclone`.
+
 6. Set explicit Slurm resource values for preflight and documentation:
 
 ```text

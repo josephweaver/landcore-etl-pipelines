@@ -128,3 +128,7 @@ locally in WSL, converted it to a Singularity SIF, and staged it at
 The image exposes `/goetl/goetl-worker` and `goet-geospatial`, plus GDAL,
 Python `osgeo.gdal`, `numpy`, and `7z`. `hpcc_preflight.sh` now checks these
 dependencies and passes against the staged image.
+
+OS-009 follow-up: the Dockerfile now installs `rclone` in the runtime image.
+Rebuild and restage the SIF before running Google Drive connector checks so the
+worker runtime exposes `/usr/bin/rclone`.
