@@ -115,6 +115,7 @@ field-year-crop/configs/hpcc-controller.template.json
 field-year-crop/configs/hpcc-worker.template.json
 field-year-crop/configs/hpcc-worker-gdrive.template.json
 field-year-crop/scripts/python/render_production_pilot_submission.py
+field-year-crop/scripts/python/extract_cdl_zip.py
 field-year-crop/scripts/python/merge_field_crop_year_outputs.py
 field-year-crop/scripts/python/write_delivery_manifest.py
 field-year-crop/scripts/python/write_gdrive_publish_plan.py
@@ -180,9 +181,10 @@ The preferred production-pilot input strategy is:
 
 ```text
 1. use registered_location for already-extracted Yan/Roy tile rasters;
-2. use cache_data for CDL year acquisition and extraction;
-3. record a follow-up if the current archive selector still requires a known CDL member path;
-4. keep gdrive_rclone Yan/Roy acquisition optional for this slice unless the preflight proves rclone is ready.
+2. use workflow data.inputs for CDL ZIP acquisition;
+3. let GORC plan deduplicated cache_data downloads per CDL year;
+4. extract each cached CDL ZIP into the shared HPCC source directory before alignment;
+5. keep gdrive_rclone Yan/Roy acquisition optional for this slice unless the preflight proves rclone is ready.
 ```
 
 Reason: this slice is about proving the real production job shape. It should not
@@ -200,6 +202,7 @@ The real pilot should use this staged DAG:
 
 ```text
 cache_data(cdl_year)
+extract_cdl_zip(cdl_year)
 cache_data or reference(yanroy_tile)
   -> raster_info(yanroy_tile)
   -> raster_info(cdl_year)
@@ -218,6 +221,7 @@ Fanout policy:
 
 ```text
 cache_data(cdl_year): one per distinct year
+extract_cdl_zip: one per distinct year, after the matching cache_data work
 yanroy materialization/reference: one per distinct tile
 metadata: one per year or tile input
 align_to_grid: one per year-tile pair
@@ -237,6 +241,7 @@ explicit dependencies. Do not fall back to a descriptive planning envelope.
 Reuse existing LandCore scripts and GORC geospatial operations:
 
 ```text
+extract_cdl_zip.py
 run_align_to_grid.py
 run_numpy_pair_counts.py or goet-geospatial raster_pair_value_counts
 summarize_field_crop_counts.py
@@ -331,6 +336,11 @@ if publication_mode=commit_gdrive, rclone and gdrive_rclone output config are pr
 The preflight must print selected years, selected tiles, expected pair count,
 worker image path, controller URL, and publication mode. It must not print
 tokens, rclone config contents, SSH private keys, or bearer tokens.
+
+The HPCC wrapper must not download CDL ZIPs directly. CDL downloads are workflow
+work items generated from `data.inputs.cdl_zip`, with
+`transfer_policy.max_concurrent_source_transfers` set explicitly on the HTTP
+asset definition.
 
 ## Execution Command
 
@@ -529,6 +539,27 @@ compilation implicitly applies a per-remote gdrive_rclone upload mutex
 
 Follow-up: move the `gdrive_rclone` upload mutex out of implicit compiler
 behavior and into an explicit workflow or provider configuration field.
+
+## Workflow-Owned CDL Acquisition Update
+
+Updated on 2026-07-12 for the full production attempt:
+
+```text
+workflow data input = cdl_zip
+provider = http
+cache_key = cdl/<year>_30m_cdls.zip
+materialization scope = shared
+max_concurrent_source_transfers = 4
+extract stage = extract-cdl, one work item per selected CDL year
+```
+
+The HPCC wrapper now prepares only the shared directories and verifies Yan/Roy
+tile rasters. It no longer performs out-of-band CDL download or extraction.
+For the full run, the selected CDL years are 2008-2023 inclusive and the tile
+list comes from `land-core.project.json` / `projects.yml` `tiles_of_interest`.
+With the current 87-tile list, the full summary-publication job should produce
+1,392 individual CSV uploads under
+`gdrive:Data/ETL/tile-field-year-crop/<tile>/`.
 
 Rclone warned during verification that the configured `gdrive` remote uses
 rclone's shared Google Drive client ID, which rclone reports is being retired

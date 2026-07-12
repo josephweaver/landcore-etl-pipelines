@@ -68,7 +68,18 @@ worker_max_active="$("$ssh_bin" -o BatchMode=yes -o ConnectTimeout=20 "$controll
 import json
 from pathlib import Path
 payload = json.loads(Path('/etc/gorc/controller.json').read_text(encoding='utf-8-sig'))
-print(payload.get('worker_max_active', ''))
+value = payload.get('worker_max_active', '')
+if value == '':
+    for variable in payload.get('variables', []):
+        name = variable.get('name', {})
+        if (
+            isinstance(name, dict)
+            and name.get('namespace') == 'controller_config'
+            and name.get('key') == 'worker_max_active'
+        ):
+            value = variable.get('expression', '')
+            break
+print(value)
 PY" 2>/dev/null)"
 controller_rc=$?
 set -e

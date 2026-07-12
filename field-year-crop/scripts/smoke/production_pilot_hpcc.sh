@@ -86,38 +86,13 @@ remote_prepare_inputs() {
   remote_script='
 set -euo pipefail
 mkdir -p "$HPCC_SCRATCH_ROOT/source" "$PRODUCT_ROOT" "$DELIVERY_ROOT"
-IFS=, read -r -a years <<< "$PILOT_YEARS"
 IFS=, read -r -a tiles <<< "$PILOT_TILES"
 for tile in "${tiles[@]}"; do
   raster="$LANDCORE_DATA_ROOT/$tile/WELD_${tile}_2010_field_segments"
   test -r "$raster"
   test -r "${raster}.hdr"
 done
-for year in "${years[@]}"; do
-  zip="$HPCC_SCRATCH_ROOT/source/${year}_30m_cdls.zip"
-  root="$HPCC_SCRATCH_ROOT/source/cdl-${year}"
-  url="https://www.nass.usda.gov/Research_and_Science/Cropland/Release/datasets/${year}_30m_cdls.zip"
-  if [ ! -s "$zip" ]; then
-    tmp="${zip}.tmp.$$"
-    rm -f "$tmp"
-    curl -L --fail --retry 3 --retry-delay 5 -o "$tmp" "$url"
-    mv "$tmp" "$zip"
-  fi
-  if ! find "$root" -type f \( -name "*.tif" -o -name "*.tiff" -o -name "*.img" -o -name "*.bil" -o -name "*.hdr" \) 2>/dev/null | grep -q .; then
-    rm -rf "$root"
-    mkdir -p "$root"
-    python3 - "$zip" "$root" <<'"'"'PY'"'"'
-import sys
-import zipfile
-from pathlib import Path
-zip_path = Path(sys.argv[1])
-out = Path(sys.argv[2])
-with zipfile.ZipFile(zip_path) as archive:
-    archive.extractall(out)
-PY
-  fi
-done
-echo "prepared production pilot inputs"
+echo "prepared production pilot directories and tile inputs"
 echo "product_root=$PRODUCT_ROOT"
 echo "delivery_root=$DELIVERY_ROOT"
 '

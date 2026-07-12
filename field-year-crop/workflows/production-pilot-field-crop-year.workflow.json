@@ -31,6 +31,34 @@
     "geospatial_executable": "/goetl/goet-geospatial"
   },
   "data": {
+    "inputs": {
+      "cdl_zip": {
+        "kind": "cdl_archive",
+        "format": "zip",
+        "parameters": {
+          "year": {"type": "int"}
+        },
+        "binding": {
+          "provider_name": "nass_cdl",
+          "provider": "http",
+          "location": {
+            "uri_template": "https://www.nass.usda.gov/Research_and_Science/Cropland/Release/datasets/${year}_30m_cdls.zip"
+          },
+          "cache": {
+            "strategy": "worker_cache",
+            "cache_key": "cdl/${year}_30m_cdls.zip",
+            "immutable": true
+          },
+          "materialization": {
+            "scope": "shared",
+            "strategy": "worker_cache"
+          },
+          "transfer_policy": {
+            "max_concurrent_source_transfers": 4
+          }
+        }
+      }
+    },
     "outputs": {
       "field_year_crop_delivery_package": {
         "kind": "archive",
@@ -66,6 +94,39 @@
     }
   },
   "steps": [
+    {
+      "id": "extract-cdl",
+      "fan_out": {
+        "over": "${workflow.years[*]}",
+        "as": "year",
+        "id": "${fanout}",
+        "output": "${fanout}"
+      },
+      "data": {
+        "inputs": {
+          "cdl_zip": {
+            "asset": "cdl_zip",
+            "with": {
+              "year": "${fanout}"
+            }
+          }
+        }
+      },
+      "work": {
+        "type": "python_script",
+        "output_prefix": "cdl_extract",
+        "output_extension": ".json",
+        "parameters": {
+          "target_environment_id": "msu-hpcc-os009",
+          "python_entrypoint": "field-year-crop/scripts/python/extract_cdl_zip.py",
+          "python_args": [
+            "--cdl-zip=${data.cdl_zip.path[0]}",
+            "--year=${fanout}",
+            "--output-root=${workflow.hpcc_scratch_root}/source/cdl-${fanout}"
+          ]
+        }
+      }
+    },
     {
       "id": "align",
       "fan_out": {
@@ -258,6 +319,11 @@
   ],
   "source_manifest": {
     "files": [
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/extract_cdl_zip.py",
+        "content_type": "text/x-python"
+      },
       {
         "role": "python_entrypoint",
         "path": "field-year-crop/scripts/python/run_align_to_grid.py",

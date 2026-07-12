@@ -57,6 +57,11 @@ gdrive delivery base path = Data/ETL/tile-field-year-crop
 
 The tile allowlist comes from `land-core.project.json`, which mirrors
 `../etl/config/projects.yml` for `projects.land_core.vars.tiles_of_interest`.
+The CDL year range is 2008-2023 inclusive. CDL ZIP acquisition is part of the
+workflow: the `extract-cdl` stage declares `data.inputs.cdl_zip`, GORC plans
+deduplicated `cache_data` downloads per selected year, and the worker extracts
+the cached ZIP under `$HPCC_SCRATCH_ROOT/source/cdl-<year>`. The HPCC wrapper
+only verifies directories and Yan/Roy tile inputs.
 
 Verified plan-only run:
 
@@ -98,6 +103,22 @@ The `publish-summaries` stage uploaded one object at a time because current
 `commit_data` compilation implicitly applies a per-remote `gdrive_rclone`
 upload mutex. That constraint should become an explicit workflow or provider
 configuration choice before recurring production use.
+
+Full summary publication run:
+
+```bash
+PUBLICATION_MODE=commit_gdrive \
+PUBLICATION_SCOPE=tile_year_summaries \
+GDRIVE_DELIVERY_BASE_PATH=/Data/ETL/tile-field-year-crop \
+PRODUCTION_PILOT_RUN_ID=os009-full-002 \
+PILOT_YEARS=2008,2009,2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,2020,2021,2022,2023 \
+PILOT_TILES=<comma-separated tiles_of_interest from land-core.project.json> \
+bash field-year-crop/scripts/smoke/production_pilot_hpcc.sh
+```
+
+For the current `tiles_of_interest` list, the full run is 16 CDL years by 87
+tiles: 1,392 tile-year summaries published as individual CSV files under
+`gdrive:Data/ETL/tile-field-year-crop/<tile>/`.
 
 Rclone printed a follow-up warning that the current `gdrive` remote uses
 rclone's shared Google Drive client ID, which rclone reports is being retired
