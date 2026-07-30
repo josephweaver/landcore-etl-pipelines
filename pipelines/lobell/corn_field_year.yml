@@ -71,6 +71,8 @@ steps:
       include_empty_polygons: false
       verbose: true
     foreach: tile_years
+    resources:
+      time: "02:00:00"
     output_var: aggregated_corn_year
 
   - name: "{sys.step.NN}_combine_corn_field_year_csvs"
