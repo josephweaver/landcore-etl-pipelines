@@ -1,0 +1,35 @@
+project_id: land_core
+shared_with_projects:
+  - crop_insurance
+
+vars:
+  dataset_id: model.landcore_tillage_neighborhood_fit_child_v1
+  name: landcore_tillage_neighborhood_fit_child
+  county_input_csv: "{env.basedir}/data/risk_model/model_input/county_data.csv"
+  normalized_input_csv: "{workdir}/county_data.normalized.csv"
+  normalized_summary_json: "{workdir}/county_data.normalized.summary.json"
+  output_model_rds: "{workdir}/output_model.rds"
+  fit_summary_json: "{workdir}/fit_summary.json"
+  rscript_bin: Rscript
+
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+
+steps:
+  - name: "{sys.step.NN}_prepare_tillage_model_input"
+    plugin: exec_script
+    args:
+      script: scripts/model/prepare_tillage_model_input.py
+      script_args: "--input-csv \"{county_input_csv}\" --output-csv \"{normalized_input_csv}\" --summary-json \"{normalized_summary_json}\""
+      verbose: true
+    output_var: normalized_input
+
+  - name: "{sys.step.NN}_fit_tillage_neighborhood_brms"
+    plugin: exec_script
+    args:
+      script: scripts/model/fit_neighborhood_brms.R
+      python_bin: "{rscript_bin}"
+      script_args: "\"{normalized_input_csv}\" \"{output_model_rds}\" \"{fit_summary_json}\""
+      verbose: true
+    output_var: fit_result

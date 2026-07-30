@@ -1,0 +1,62 @@
+project_id: land_core
+shared_with_projects:
+  - crop_insurance
+
+requires_pipelines:
+  - pipelines/prism/vpdmax_download.yml
+  - pipelines/yanroy/polygons.yml
+
+vars:
+  dataset_id: stage.prism_vpdmax_field_year_v1
+  name: prism_vpdmax_field_aggregate
+  datadir: "{env.datadir}/prism/vpdmax"
+  outdir: "{datadir}"
+  extractdir: "{datadir}/monthly/raw"
+  yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
+  tiles: "{project.tiles_of_interest}"
+  # tiles: ["h21v10","h23v08"]
+  year_month_regex: "(20\\d{2}(0[1-9]|1[0-2]))"
+  per_tile_outdir: "{datadir}/monthly/by_tile"
+  per_tile_csv_glob: "{per_tile_outdir}/*.csv"
+  combined_monthly_csv: "{env.datadir}/prism/vpdmax/monthly/vpdmax_tile_field_monthly.csv"
+  output_csv: "{outdir}/vpdmax_field_year.csv"
+  summary_json: "{outdir}/vpdmax_field_year.summary.json"
+  value_prefix: vpdmax
+  tile_field_id_field: tile_field_id
+
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+
+steps:
+  - name: "{sys.step.NN}_aggregate_vpdmax_by_tile"
+    plugin: exec_script
+    args:
+      script: "{sys.projectdir}/scripts/prism/aggregate_vpdmax_by_tile.py"
+      script_args: "--tile \"{item}\" --prism-dir \"{extractdir}\" --polygon-path \"{yanroy_polygon_dir}/WELD_{item}_2010_field_segments.gpkg\" --output-csv \"{per_tile_outdir}/{item}.csv\" --summary-json \"{per_tile_outdir}/{item}.summary.json\" --polygon-id-field field_id --day-from-filename-regex \"{year_month_regex}\" --day-from-filename-group 1 --value-prefix \"{value_prefix}\" --verbose"
+      verbose: true
+    foreach: tiles
+    resources:
+      time: "04:00:00"
+    output_var: raster_stats
+
+  - name: "{sys.step.NN}_combine_vpdmax_monthly_stats"
+    plugin: combine_files
+    args:
+      input_glob: "{per_tile_csv_glob}"
+      output_file: "{combined_monthly_csv}"
+      format: csv
+      verbose: true
+    resources:
+      mem: "48G"
+    output_var: combined_stats
+
+  - name: "{sys.step.NN}_normalize_vpdmax_field_year"
+    plugin: exec_script
+    args:
+      script: "{sys.projectdir}/scripts/prism/normalize_vpdmax_field_year.py"
+      script_args: "--input-csv \"{combined_monthly_csv}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
+      verbose: true
+    resources:
+      mem: "48G"
+    output_var: vpdmax_field_year

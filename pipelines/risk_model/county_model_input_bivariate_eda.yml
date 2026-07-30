@@ -1,0 +1,30 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/risk_model/tillage_covariates_model_input.yml
+
+vars:
+  dataset_id: stage.risk_model_county_input_bivariate_eda_v1
+  name: risk_model_county_input_bivariate_eda
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  model_input_root: "{env.basedir}/data/risk_model/model_input"
+  input_dir: "{model_input_root}/county_model_input"
+  manifest_csv: "{model_input_root}/county_model_input_manifest.csv"
+  sqlite_path: "{model_input_root}/tillage_model_input/join.sqlite3"
+  outdir: "{env.basedir}/data/risk_model/eda/county_input_bivariate_eda_v1"
+  summary_json: "{outdir}/county_model_input_bivariate_eda.summary.json"
+  report_md: "{outdir}/county_model_input_bivariate_eda.report.md"
+  sample_size: 50000
+  quantile_bins: 10
+
+steps:
+  - name: "{sys.step.NN}_build_bivariate_eda_bundle"
+    plugin: exec_script
+    args:
+      script: "{sys.projectdir}/scripts/model/bivariate_eda_county_model_input.py"
+      script_args: "--input-dir \"{input_dir}\" --manifest-csv \"{manifest_csv}\" --output-dir \"{outdir}\" --summary-json \"{summary_json}\" --report-md \"{report_md}\" --sqlite-path \"{sqlite_path}\" --sample-size {sample_size} --quantile-bins {quantile_bins} --verbose"
+      verbose: true
+    resources:
+      mem: "32G"
+      time: "04:00:00"
+    output_var: county_model_input_bivariate_eda
