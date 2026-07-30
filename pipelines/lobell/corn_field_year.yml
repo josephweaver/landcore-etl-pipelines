@@ -12,28 +12,11 @@ vars:
   yanroy_polygon_path: "{env.basedir}/data/yanroy/polygons/field_polygons.gpkg"
   yanroy_polygon_dir: "{env.basedir}/data/yanroy/polygons"
   tiles: "{project.tiles_of_interest}"
-  years:
-    # - 2000
-    # - 2001
-    # - 2002
-    # - 2003
-    # - 2004
-    - 2005
-    - 2006
-    - 2007
-    - 2008
-    - 2009
-    - 2010
-    # - 2011
-    # - 2012
-    # - 2013
-    # - 2014
-    # - 2015
-    # - 2016
-    # - 2017
-    # - 2018
-    # - 2019
-    # - 2020
+  # Override these bounds in five-year batches to keep each SLURM array below
+  # the cluster's 1,000-pending-job limit.
+  batch_year_start: 2005
+  batch_year_end: 2009
+  years: "{expr.range(batch_year_start, batch_year_end)}"
   tile_years: "{expr.product(tiles, years)}"
   per_year_raster_dir: "{lobell_dir}/by_year_raster"
   per_tile_year_csv_dir: "{lobell_dir}/by_tile_year_csv"
