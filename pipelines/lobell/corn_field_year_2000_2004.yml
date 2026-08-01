@@ -14,8 +14,8 @@ vars:
   tiles: "{project.tiles_of_interest}"
   # Override these bounds in five-year batches to keep each SLURM array below
   # the cluster's 1,000-pending-job limit.
-  batch_year_start: 2005
-  batch_year_end: 2009
+  batch_year_start: 2000
+  batch_year_end: 2004
   years: "{expr.range(batch_year_start, batch_year_end)}"
   tile_years: "{expr.product(tiles, years)}"
   per_year_raster_dir: "{lobell_dir}/by_year_raster"
