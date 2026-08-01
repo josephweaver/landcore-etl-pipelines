@@ -4,6 +4,7 @@ pipelines/.builder_step_tests/
 .runs
 .run
 landcore-etl-pipelines.code-workspace
+.vscode/
 .data
 */.run
 field-year-crop/configs/hpcc-controller.json
