@@ -1,7 +1,8 @@
 project_id: land_core
 requires_pipelines:
   - pipelines/lobell/corn_field_year.yml
-  - pipelines/lobell/tillage_field_year.yml
+  - pipelines/lobell/tillage_field_year_2005_2010.yml
+  - pipelines/lobell/tillage_field_year_2011_2016.yml
   - pipelines/prism/vpdmax_field_aggregate.yml
   - pipelines/ssurgo/yanroy_tile_field_nccpi.yml
   - pipelines/yanroy/field_fips.yml
