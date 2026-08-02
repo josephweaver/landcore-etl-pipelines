@@ -31,6 +31,8 @@ steps:
       script_args: "--state-code \"{item}\" --gdb-path \"{gdb_dir}/gSSURGO_{item}.gdb\" --output-csv \"{per_state_outdir}/{item}.valu1_nccpi.csv\" --summary-json \"{per_state_outdir}/{item}.valu1_nccpi.summary.json\" --ogr2ogr-bin \"{ogr2ogr_bin}\" --gdal-module \"{gdal_module}\" --layer-name \"Valu1\" --verbose"
       verbose: true
     foreach: states
+    resources:
+      time: "04:00:00"
     output_var: state_valu1_nccpi
   - name: "{sys.step.NN}_combine_state_valu1_nccpi"
     plugin: combine_files
