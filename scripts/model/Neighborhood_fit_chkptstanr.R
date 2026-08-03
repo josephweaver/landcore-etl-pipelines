@@ -291,9 +291,9 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
   write_json(fit_summary, fit_summary_json, auto_unbox = TRUE, pretty = TRUE)
 }
 
-# stop_after controls how far chkptstanr is allowed to run in this invocation.
-# We increase it one checkpoint at a time so long jobs can stop cleanly near the
-# scheduler wall-clock limit and resume later.
+# stop_after is a hard iteration cap for this invocation. This permits a
+# warmup-only invocation (for example, stop_after == iter_warmup) whose saved
+# Stan state can be resumed by a later invocation.
 current_stop_after <- if (is.null(stop_after)) expected_checkpoints * iter_per_chkpt else stop_after
 fit <- NULL
 repeat {
@@ -337,6 +337,10 @@ repeat {
   }
   completed_checkpoints <- length(list.files(file.path(checkpoint_dir, "cp_info"), pattern = "^cp_info_[0-9]+\\.rds$", full.names = TRUE))
   if (completed_checkpoints >= expected_checkpoints) {
+    break
+  }
+  if (!is.null(stop_after)) {
+    message("Reached explicit stop_after cap for this invocation.")
     break
   }
   if (should_stop_for_time()) {
