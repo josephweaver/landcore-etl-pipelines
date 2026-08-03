@@ -16,8 +16,7 @@
 #    least these columns:
 #    - unscaled_yield
 #    - tile_field_ID
-#    - tillage_0_prop
-#    - tillage_1_prop
+#    - tillage_prop_01
 #    - nccpi3corn
 #    - vpdmax_7
 #    - year
@@ -162,39 +161,34 @@ this_df <- read_csv(dat_path, show_col_types = FALSE)
 # These are the fixed-effect terms included in the regression.
 # Interaction terms are written the way brms expects them in the formula.
 model_covars <- c(
-  "tillage_0_prop",
-  "tillage_1_prop",
+  "tillage_prop_01",
   "nccpi3corn",
   "vpdmax_7",
-  "tillage_0_prop*vpdmax_7",
-  "tillage_1_prop*vpdmax_7",
-  "tillage_0_prop*nccpi3corn",
-  "tillage_1_prop*nccpi3corn",
+  "tillage_prop_01*vpdmax_7",
+  "tillage_prop_01*nccpi3corn",
   "year"
 )
 
 # Match the older neighborhood scripts by using informed priors for the
 # main effects while leaving interactions on the default brms priors.
 priors_unscaled <- data.frame(
-  parameter = c("year", "tillage_0_prop", "tillage_1_prop", "nccpi3corn", "vpdmax_7"),
-  scalar_par = c("year", "tillage_0_prop", "tillage_1_prop", "nccpi3corn", "vpdmax_7"),
-  linear_effect_yieldscale = c(15, 26, 26, 1150, -20)
+  parameter = c("year", "tillage_prop_01", "nccpi3corn", "vpdmax_7"),
+  scalar_par = c("year", "tillage_prop_01", "nccpi3corn", "vpdmax_7"),
+  linear_effect_yieldscale = c(15, 26, 1150, -20)
 )
 
 # Keep the original scaling values so priors can roughly match the scale
 # of each main-effect predictor before standardization.
 this_scaling_factors <- data.frame(
-  param = c("tillage_0_prop", "tillage_1_prop", "nccpi3corn", "vpdmax_7", "year"),
+  param = c("tillage_prop_01", "nccpi3corn", "vpdmax_7", "year"),
   mean = c(
-    mean(this_df$tillage_0_prop),
-    mean(this_df$tillage_1_prop),
+    mean(this_df$tillage_prop_01),
     mean(this_df$nccpi3corn),
     mean(this_df$vpdmax_7),
     0
   ),
   sd = c(
-    sd(this_df$tillage_0_prop),
-    sd(this_df$tillage_1_prop),
+    sd(this_df$tillage_prop_01),
     sd(this_df$nccpi3corn),
     sd(this_df$vpdmax_7),
     1
@@ -205,8 +199,7 @@ this_scaling_factors <- data.frame(
 # Year is re-centered so the intercept is interpretable near the first study year.
 this_county_dat <- this_df %>%
   mutate(
-    tillage_0_prop = as.numeric(scale(tillage_0_prop)),
-    tillage_1_prop = as.numeric(scale(tillage_1_prop)),
+    tillage_prop_01 = as.numeric(scale(tillage_prop_01)),
     nccpi3corn = as.numeric(scale(nccpi3corn)),
     vpdmax_7 = as.numeric(scale(vpdmax_7)),
     year = as.numeric(year - 2010)
@@ -214,8 +207,7 @@ this_county_dat <- this_df %>%
   drop_na(
     unscaled_yield,
     tile_field_ID,
-    tillage_0_prop,
-    tillage_1_prop,
+    tillage_prop_01,
     nccpi3corn,
     vpdmax_7,
     year
@@ -294,7 +286,7 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
     final_fit_path = if (is.null(final_fit_path)) NULL else normalizePath(final_fit_path, winslash = "/", mustWork = FALSE),
     partial_draws_path = if (is.null(partial_draws_path)) NULL else normalizePath(partial_draws_path, winslash = "/", mustWork = FALSE),
     partial_summary_path = if (is.null(partial_summary_path)) NULL else normalizePath(partial_summary_path, winslash = "/", mustWork = FALSE),
-    note = "Checkpointed neighborhood fit uses tillage proportion covariates in place of the older RCI terms."
+    note = "Checkpointed neighborhood fit uses tillage_prop_01 as its tillage covariate."
   )
   write_json(fit_summary, fit_summary_json, auto_unbox = TRUE, pretty = TRUE)
 }

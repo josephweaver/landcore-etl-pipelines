@@ -3,18 +3,18 @@ shared_with_projects:
   - crop_insurance
 
 vars:
-  dataset_id: model.landcore_neighborhood_fit_chkptstanr_child_v1
-  name: landcore_neighborhood_fit_chkptstanr_child
+  dataset_id: model.landcore_neighborhood_fit_chkptstanr_child_v2
+  name: landcore_neighborhood_fit_chkptstanr_child_tillage_prop_01
   county_fips: "00000"
-  fit_root: "/mnt/scratch/weave151/fits"
-  model_input_root: "/mnt/gs21/scratch/weave151/etl/data/risk_model/model_input/county_model_input"
+  fit_root: "/mnt/scratch/weave151/fits/tillage_prop_01"
+  model_input_root: "/mnt/gs21/scratch/weave151/etl/data/risk_model/model_input/county_model_input_v2"
   county_fit_dir: "{fit_root}/{county_fips}"
   run_dir: "{county_fit_dir}/run"
   county_input_csv: "{model_input_root}/{county_fips}/county_data.csv"
   checkpoint_dir: "{run_dir}/chkpt"
   output_model_rds: "{county_fit_dir}/output_model"
   fit_summary_json: "{county_fit_dir}/fit_summary.json"
-  fit_script_path: "/mnt/gs21/scratch/weave151/etl/src/landcore-etl-pipelines/scripts/model/Neighborhood_fit_chkptstanr.R"
+  fit_script_path: "/mnt/gs21/scratch/weave151/etl/controler/src/landcore-etl-pipelines/scripts/model/Neighborhood_fit_chkptstanr.R"
   rscript_bin: "Rscript"
   iter_warmup: 250
   iter_sampling: 2500
