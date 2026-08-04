@@ -104,7 +104,7 @@ model_variant <- if (length(args) >= 14 && nzchar(args[14])) args[14] else "annu
 if (!model_variant %in% c("annual", "within_between")) {
   stop("model_variant must be one of: annual, within_between")
 }
-year_reference <- if (length(args) >= 15 && nzchar(args[15])) as.integer(args[15]) else 2017L
+year_reference <- if (length(args) >= 15 && nzchar(args[15])) as.integer(args[15]) else 2016L
 if (is.na(year_reference)) {
   stop("year_reference must be an integer year")
 }

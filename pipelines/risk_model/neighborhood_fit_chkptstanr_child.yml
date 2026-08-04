@@ -26,7 +26,7 @@ vars:
   wall_clock_limit_seconds: 3600
   wall_clock_margin_seconds: 300
   model_variant: annual
-  year_reference: 2017
+  year_reference: 2016
   year_effect: fixed
   year_trend_origin: 2005
 
