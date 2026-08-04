@@ -39,6 +39,8 @@
 # 13. [wall_clock_margin_seconds]
 # 14. [model_variant]
 # 15. [year_reference]
+# 16. [year_effect]
+# 17. [year_trend_origin]
 #
 # Main outputs:
 # - output_model_rds when all checkpoints are complete
@@ -80,7 +82,7 @@ if (length(args) < 2) {
       "Usage:",
       "Rscript Neighborhood_fit_chkptstanr.R <data_csv> <checkpoint_dir> [output_model_rds] [fit_summary_json]",
       "[iter_warmup] [iter_sampling] [iter_per_chkpt] [chains] [seed] [stop_after] [reset]",
-      "[wall_clock_limit_seconds] [wall_clock_margin_seconds] [model_variant] [year_reference]"
+      "[wall_clock_limit_seconds] [wall_clock_margin_seconds] [model_variant] [year_reference] [year_effect] [year_trend_origin]"
     )
   )
 }
@@ -105,6 +107,14 @@ if (!model_variant %in% c("annual", "within_between")) {
 year_reference <- if (length(args) >= 15 && nzchar(args[15])) as.integer(args[15]) else 2017L
 if (is.na(year_reference)) {
   stop("year_reference must be an integer year")
+}
+year_effect <- if (length(args) >= 16 && nzchar(args[16])) args[16] else "fixed"
+if (!year_effect %in% c("fixed", "trend", "random", "random_trend")) {
+  stop("year_effect must be one of: fixed, trend, random, random_trend")
+}
+year_trend_origin <- if (length(args) >= 17 && nzchar(args[17])) as.integer(args[17]) else 2005L
+if (is.na(year_trend_origin)) {
+  stop("year_trend_origin must be an integer year")
 }
 
 # chkptstanr saves progress in chunks, so we can resume a long Stan run later.
@@ -168,35 +178,41 @@ set_cmdstan_path(cmdstan_path_to_use)
 
 this_df <- read_csv(dat_path, show_col_types = FALSE)
 
+year_covars <- switch(
+  year_effect,
+  fixed = "year_factor",
+  trend = "year_trend",
+  random = character(0),
+  random_trend = "year_trend"
+)
+
 # These are the fixed-effect terms included in the regression. The optional
 # within_between variant follows the original RiskModel approach: it separates
 # persistent between-field tillage differences from annual within-field changes
 # and absorbs common annual shocks with year fixed effects.
 if (model_variant == "within_between") {
-  model_covars <- c(
+  model_covars <- c(c(
     "mean_tillage_prop_01",
     "within_tillage_prop_01",
     "nccpi3corn",
     "vpdmax_7",
     "within_tillage_prop_01*vpdmax_7",
     "mean_tillage_prop_01*vpdmax_7",
-    "mean_tillage_prop_01*nccpi3corn",
-    "year_factor"
-  )
+    "mean_tillage_prop_01*nccpi3corn"
+  ), year_covars)
   priors_unscaled <- data.frame(
     parameter = c("mean_tillage_prop_01", "within_tillage_prop_01", "nccpi3corn", "vpdmax_7"),
     scalar_par = c("tillage_prop_01", "tillage_prop_01", "nccpi3corn", "vpdmax_7"),
     linear_effect_yieldscale = c(26, 26, 1150, -20)
   )
 } else {
-  model_covars <- c(
+  model_covars <- c(c(
     "tillage_prop_01",
     "nccpi3corn",
     "vpdmax_7",
     "tillage_prop_01*vpdmax_7",
-    "tillage_prop_01*nccpi3corn",
-    "year_factor"
-  )
+    "tillage_prop_01*nccpi3corn"
+  ), year_covars)
   priors_unscaled <- data.frame(
     parameter = c("tillage_prop_01", "nccpi3corn", "vpdmax_7"),
     scalar_par = c("tillage_prop_01", "nccpi3corn", "vpdmax_7"),
@@ -204,24 +220,37 @@ if (model_variant == "within_between") {
   )
 }
 
+if (year_effect %in% c("trend", "random_trend")) {
+  priors_unscaled <- bind_rows(
+    priors_unscaled,
+    data.frame(
+      parameter = "year_trend",
+      scalar_par = "year_trend",
+      linear_effect_yieldscale = 15
+    )
+  )
+}
+
 # Keep the original scaling values so priors can roughly match the scale
 # of each main-effect predictor before standardization.
 this_scaling_factors <- data.frame(
-  param = c("tillage_prop_01", "nccpi3corn", "vpdmax_7"),
+  param = c("tillage_prop_01", "nccpi3corn", "vpdmax_7", "year_trend"),
   mean = c(
     mean(this_df$tillage_prop_01),
     mean(this_df$nccpi3corn),
-    mean(this_df$vpdmax_7)
+    mean(this_df$vpdmax_7),
+    year_trend_origin
   ),
   sd = c(
     sd(this_df$tillage_prop_01),
     sd(this_df$nccpi3corn),
-    sd(this_df$vpdmax_7)
+    sd(this_df$vpdmax_7),
+    1
   )
 )
 
 available_years <- sort(unique(as.integer(this_df$year[!is.na(this_df$year)])))
-if (!year_reference %in% available_years) {
+if (year_effect == "fixed" && !year_reference %in% available_years) {
   stop(
     "year_reference ", year_reference,
     " is absent from the input data; available years: ",
@@ -237,7 +266,8 @@ if (model_variant == "within_between") {
       tillage_prop_01 = as.numeric(scale(tillage_prop_01)),
       nccpi3corn = as.numeric(scale(nccpi3corn)),
       vpdmax_7 = as.numeric(scale(vpdmax_7)),
-      year_factor = relevel(factor(year), ref = as.character(year_reference))
+      year_factor = if (year_effect == "fixed") relevel(factor(year), ref = as.character(year_reference)) else factor(year),
+      year_trend = as.numeric(year - year_trend_origin)
     ) %>%
     group_by(tile_field_ID) %>%
     mutate(
@@ -252,7 +282,8 @@ if (model_variant == "within_between") {
       tillage_prop_01 = as.numeric(scale(tillage_prop_01)),
       nccpi3corn = as.numeric(scale(nccpi3corn)),
       vpdmax_7 = as.numeric(scale(vpdmax_7)),
-      year_factor = relevel(factor(year), ref = as.character(year_reference))
+      year_factor = if (year_effect == "fixed") relevel(factor(year), ref = as.character(year_reference)) else factor(year),
+      year_trend = as.numeric(year - year_trend_origin)
     ) %>%
     ungroup()
 }
@@ -263,12 +294,16 @@ if (nrow(this_county_dat) == 0) {
 
 # The model uses field-level random intercepts so repeated observations from the
 # same field can share information without being treated as independent.
+random_terms <- c("(1 | tile_field_ID)")
+if (year_effect %in% c("random", "random_trend")) {
+  random_terms <- c(random_terms, "(1 | year_factor)")
+}
+
 formula <- brms::bf(
   as.formula(
     paste0(
       "unscaled_yield ~ ",
-      paste(model_covars, collapse = " + "),
-      " + (1 | tile_field_ID)"
+      paste(c(model_covars, random_terms), collapse = " + ")
     )
   )
 )
@@ -302,6 +337,8 @@ message("Fit summary path: ", fit_summary_json)
 message(
   "Config: model_variant=", model_variant,
   ", year_reference=", year_reference,
+  ", year_effect=", year_effect,
+  ", year_trend_origin=", year_trend_origin,
   ", iter_warmup=", iter_warmup,
   ", iter_sampling=", iter_sampling,
   ", iter_per_chkpt=", iter_per_chkpt,
@@ -325,6 +362,8 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
     focal_fips = sort(unique(this_county_dat$FIPS)),
     model_variant = model_variant,
     year_reference = year_reference,
+    year_effect = year_effect,
+    year_trend_origin = year_trend_origin,
     model_covars = model_covars,
     scaling = this_scaling_factors,
     completed_checkpoints = completed_checkpoints,
@@ -333,17 +372,10 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
     final_fit_path = if (is.null(final_fit_path)) NULL else normalizePath(final_fit_path, winslash = "/", mustWork = FALSE),
     partial_draws_path = if (is.null(partial_draws_path)) NULL else normalizePath(partial_draws_path, winslash = "/", mustWork = FALSE),
     partial_summary_path = if (is.null(partial_summary_path)) NULL else normalizePath(partial_summary_path, winslash = "/", mustWork = FALSE),
-    note = if (model_variant == "within_between") {
-      paste0(
-        "Checkpointed neighborhood fit decomposes standardized tillage_prop_01 into between-field mean and within-field annual deviation terms, ",
-        "with year fixed effects referenced to ", year_reference, "."
-      )
-    } else {
-      paste0(
-        "Checkpointed neighborhood fit uses annual tillage_prop_01 as its tillage covariate, ",
-        "with year fixed effects referenced to ", year_reference, "."
-      )
-    }
+    note = paste0(
+      "Checkpointed neighborhood fit uses model_variant=", model_variant,
+      " and year_effect=", year_effect, "."
+    )
   )
   write_json(fit_summary, fit_summary_json, auto_unbox = TRUE, pretty = TRUE)
 }
