@@ -1,0 +1,25 @@
+project_id: land_core
+shared_with_projects:
+  - crop_insurance
+
+vars:
+  dataset_id: stage.lobell_field_year_v1
+  name: lobell_corn_tillage_ingest
+  corn_tiles_glob: "{env.basedir}/data/corn/tiles/*.csv"
+  tillage_tiles_glob: "{env.basedir}/data/tillage/tiles/*.csv"
+  soy_tiles_glob: "{env.basedir}/data/soy/tiles/*.csv"
+  output_csv: "{workdir}/lobell_field_year.csv"
+  summary_json: "{workdir}/lobell_field_year.summary.json"
+
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+
+steps:
+  - name: "{sys.step.NN}_build_lobell_field_year"
+    plugin: exec_script
+    args:
+      script: scripts/model/build_lobell_field_year.py
+      script_args: "--corn-glob \"{corn_tiles_glob}\" --tillage-glob \"{tillage_tiles_glob}\" --soy-glob \"{soy_tiles_glob}\" --output-csv \"{output_csv}\" --summary-json \"{summary_json}\""
+      verbose: true
+    output_var: lobell_field_year

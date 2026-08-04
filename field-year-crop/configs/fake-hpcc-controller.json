@@ -1,0 +1,54 @@
+{
+  "api_version": "goet/v1alpha1",
+  "kind": "Controller",
+  "variables": [
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "controller_url"
+      },
+      "type": "string",
+      "expression": "http://localhost:8080"
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "main_database_driver"
+      },
+      "type": "string",
+      "expression": "sqlite"
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "main_database_connection_string"
+      },
+      "type": "string",
+      "expression": "/tmp/landcore-field-year-crop/fake-hpcc-synthetic/controller/workflow-execution.sqlite"
+    }
+  ],
+  "execution_environment": {
+    "name": "landcore-fake-hpcc-synthetic",
+    "transports": [
+      {
+        "name": "local",
+        "type": "local"
+      }
+    ],
+    "dialect": {
+      "type": "bash"
+    },
+    "scheduler": {
+      "type": "slurm"
+    },
+    "runtime": {
+      "type": "worker",
+      "settings": {
+        "root": "/tmp/landcore-field-year-crop/fake-hpcc-synthetic/runtime",
+        "controller_url": "http://localhost:8080",
+        "data_dir": "/tmp/landcore-field-year-crop/fake-hpcc-synthetic/runtime/data",
+        "max_asset_bytes": 20000000000
+      }
+    }
+  }
+}

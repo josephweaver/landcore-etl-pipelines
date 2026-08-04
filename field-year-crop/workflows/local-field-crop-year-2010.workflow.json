@@ -1,0 +1,389 @@
+{
+  "workflow": {
+    "ID": "local-field-crop-year-2010",
+    "Variables": [
+      {
+        "name": {
+          "namespace": "workflow",
+          "key": "align_runs"
+        },
+        "type": "list",
+        "expression": [
+          {
+            "type": "object",
+            "expression": {
+              "id": {
+                "type": "string",
+                "expression": "2010-h18v07"
+              },
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/run_align_to_grid.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "--cdl-asset-path=/tmp/landcore-field-year-crop/local-field-crop-year-2010/cdl-2010"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--yanroy-raster=/tmp/landcore-field-year-crop/local-field-crop-year-2010/yanroy/WELD_h18v07_2010_field_segments"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--geospatial-executable=goet-geospatial"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--output-root=/tmp/landcore-field-year-crop/local-field-crop-year-2010"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": {
+          "namespace": "workflow",
+          "key": "count_runs"
+        },
+        "type": "list",
+        "expression": [
+          {
+            "type": "object",
+            "expression": {
+              "id": {
+                "type": "string",
+                "expression": "2010-h18v07"
+              },
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/run_numpy_pair_counts.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "--field-raster=/tmp/landcore-field-year-crop/local-field-crop-year-2010/aligned/yanroy_h18v07_uint32.tif"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--value-raster=/tmp/landcore-field-year-crop/local-field-crop-year-2010/aligned/cdl_2010_on_h18v07_grid.tif"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--year=2010"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--counts-csv=/tmp/landcore-field-year-crop/local-field-crop-year-2010/counts/field_crop_counts_2010.csv"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--metadata-json=/tmp/landcore-field-year-crop/local-field-crop-year-2010/counts/field_crop_counts_2010.metadata.json"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": {
+          "namespace": "workflow",
+          "key": "summary_runs"
+        },
+        "type": "list",
+        "expression": [
+          {
+            "type": "object",
+            "expression": {
+              "id": {
+                "type": "string",
+                "expression": "2010-h18v07"
+              },
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/summarize_field_crop_counts.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "--counts-csv=/tmp/landcore-field-year-crop/local-field-crop-year-2010/counts/field_crop_counts_2010.csv"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--year=2010"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--output-csv=/tmp/landcore-field-year-crop/local-field-crop-year-2010/summary/field_crop_year_summary_2010.csv"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--metadata-json=/tmp/landcore-field-year-crop/local-field-crop-year-2010/summary/field_crop_year_summary_2010.metadata.json"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "name": {
+          "namespace": "workflow",
+          "key": "validation_runs"
+        },
+        "type": "list",
+        "expression": [
+          {
+            "type": "object",
+            "expression": {
+              "id": {
+                "type": "string",
+                "expression": "2010-h18v07"
+              },
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/validate_field_crop_year_product.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "--counts-csv=/tmp/landcore-field-year-crop/local-field-crop-year-2010/counts/field_crop_counts_2010.csv"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--summary-csv=/tmp/landcore-field-year-crop/local-field-crop-year-2010/summary/field_crop_year_summary_2010.csv"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--year=2010"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--raster-info-json=/tmp/landcore-field-year-crop/local-field-crop-year-2010/metadata/raster_info.json"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--alignment-metadata-json=/tmp/landcore-field-year-crop/local-field-crop-year-2010/aligned/cdl_2010_on_h18v07_grid.metadata.json"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--counts-metadata-json=/tmp/landcore-field-year-crop/local-field-crop-year-2010/counts/field_crop_counts_2010.metadata.json"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--summary-metadata-json=/tmp/landcore-field-year-crop/local-field-crop-year-2010/summary/field_crop_year_summary_2010.metadata.json"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--input-discovery-json=/tmp/landcore-field-year-crop/local-field-crop-year-2010/metadata/input_discovery.json"
+                  },
+                  {
+                    "type": "string",
+                    "expression": "--output-json=/tmp/landcore-field-year-crop/local-field-crop-year-2010/validation/field_crop_year_validation_2010.json"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ],
+    "Steps": [
+      {
+        "ID": "align",
+        "FanOut": {
+          "WorkItem": {
+            "FanOutExpression": "${align_runs[*]}",
+            "IDTokenAccessor": ".id",
+            "OutputAccessor": ".id",
+            "Type": "python_script",
+            "IDPrefix": "field_crop_year_align",
+            "OutputPrefix": "field_crop_year_align",
+            "OutputExtension": ".json",
+            "Parameters": {
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/run_align_to_grid.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "unused"
+                  }
+                ]
+              }
+            },
+            "ParameterAccessors": {
+              "python_entrypoint": ".python_entrypoint",
+              "python_args": ".python_args"
+            }
+          }
+        }
+      },
+      {
+        "ID": "pair-counts",
+        "FanOut": {
+          "WorkItem": {
+            "FanOutExpression": "${count_runs[*]}",
+            "IDTokenAccessor": ".id",
+            "OutputAccessor": ".id",
+            "Type": "python_script",
+            "IDPrefix": "field_crop_year_counts",
+            "OutputPrefix": "field_crop_year_counts",
+            "OutputExtension": ".json",
+            "Parameters": {
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/run_numpy_pair_counts.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "unused"
+                  }
+                ]
+              }
+            },
+            "ParameterAccessors": {
+              "python_entrypoint": ".python_entrypoint",
+              "python_args": ".python_args"
+            }
+          }
+        }
+      },
+      {
+        "ID": "summarize",
+        "FanOut": {
+          "WorkItem": {
+            "FanOutExpression": "${summary_runs[*]}",
+            "IDTokenAccessor": ".id",
+            "OutputAccessor": ".id",
+            "Type": "python_script",
+            "IDPrefix": "field_crop_year_summary",
+            "OutputPrefix": "field_crop_year_summary",
+            "OutputExtension": ".json",
+            "Parameters": {
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/summarize_field_crop_counts.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "unused"
+                  }
+                ]
+              }
+            },
+            "ParameterAccessors": {
+              "python_entrypoint": ".python_entrypoint",
+              "python_args": ".python_args"
+            }
+          }
+        }
+      },
+      {
+        "ID": "validate",
+        "FanOut": {
+          "WorkItem": {
+            "FanOutExpression": "${validation_runs[*]}",
+            "IDTokenAccessor": ".id",
+            "OutputAccessor": ".id",
+            "Type": "python_script",
+            "IDPrefix": "field_crop_year_validation",
+            "OutputPrefix": "field_crop_year_validation",
+            "OutputExtension": ".json",
+            "Parameters": {
+              "python_entrypoint": {
+                "type": "path",
+                "expression": "field-year-crop/scripts/python/validate_field_crop_year_product.py"
+              },
+              "python_args": {
+                "type": "list",
+                "expression": [
+                  {
+                    "type": "string",
+                    "expression": "unused"
+                  }
+                ]
+              }
+            },
+            "ParameterAccessors": {
+              "python_entrypoint": ".python_entrypoint",
+              "python_args": ".python_args"
+            }
+          }
+        }
+      }
+    ]
+  },
+  "source_manifest": {
+    "files": [
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/run_align_to_grid.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/run_numpy_pair_counts.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/summarize_field_crop_counts.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "python_entrypoint",
+        "path": "field-year-crop/scripts/python/validate_field_crop_year_product.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/discover_raster_asset.py",
+        "content_type": "text/x-python"
+      },
+      {
+        "role": "support_file",
+        "path": "field-year-crop/scripts/python/field_crop_common.py",
+        "content_type": "text/x-python"
+      }
+    ]
+  },
+  "variables": [
+    {
+      "name": {
+        "namespace": "worker_config",
+        "key": "worker_count_per_start"
+      },
+      "type": "int",
+      "expression": 1
+    },
+    {
+      "name": {
+        "namespace": "worker_config",
+        "key": "worker_max_count"
+      },
+      "type": "int",
+      "expression": 1
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+project_id: land_core
+vars:
+  dataset_id: raw.prism_vpdmax_monthly_800m_download_v1
+  name: prism_vpdmax_download
+  prism_base_url: ftp://prism.oregonstate.edu/time_series/us/an/800m/vpdmax/monthly
+  year_start: 2005
+  year_end: 2016
+  years: "{expr.range(year_start, year_end)}"
+  prism_filename_glob: "*"
+  workdir: "{env.workdir}/{sys.job.name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  archivedir: "{env.datadir}/prism/vpdmax/monthly/archive"
+  extractdir: "{env.datadir}/prism/vpdmax/monthly/raw"
+dirs:
+  workdir: "{env.workdir}/{sys.job.name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+steps:
+  - name: "{sys.step.NN}_stage_prism_ftp"
+    plugin: ftp_download_tree
+    args:
+      url: "{prism_base_url}/{item}"
+      out: "{archivedir}/{item}"
+      recursive: true
+      filename_glob: "{prism_filename_glob}"
+      overwrite: false
+      timeout_seconds: 120
+    foreach: years
+    output_var: staged_raw
+  - name: "{sys.step.NN}_extract_prism_archives"
+    plugin: archive_extract
+    args:
+      archive_glob: "{archivedir}/{item}/**/*.zip"
+      out: "{extractdir}/{item}"
+      overwrite: true
+    foreach: years
+    output_var: extracted_raw

@@ -1,0 +1,53 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/ssurgo/conus_mukey_grid_download.yml
+  - pipelines/yanroy/polygons.yml
+vars:
+  dataset_id: stage.ssurgo_tile_field_mukey_v1
+  name: ssurgo_yanroy_tile_field_mukey
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  tiles: "{project.tiles_of_interest}"
+  ssurgo_path: "{env.basedir}/data/ssurgo/conus_mukey_grid/extract/MURASTER_30m.tif"
+  mukey_field: mukey
+  yanroy_polygon_glob: "{env.basedir}/data/yanroy/polygons/WELD_*_2010_field_segments.gpkg"
+  field_id_field: tile_field_id
+  tile_field: tile_id
+  outdir: "{env.basedir}/data/ssurgo/yanroy_mukey"
+  per_tile_outdir: "{outdir}/by_tile"
+  tile_field_mukey_csv: "{outdir}/tile_field2mukey.csv"
+  tile_field_mukey_glob: "{per_tile_outdir}/*.tile_field_mukey_map.csv"
+  duckdb_table_tile_field_mukey: rel_tile_field_mukey
+  duckdb_load_mode: replace
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+steps:
+  - name: "{sys.step.NN}_build_tile_field_mukey_map"
+    plugin: exec_script
+    args:
+      script: scripts/ssurgo/build_tile_field_mukey_map.py
+      script_args: "--tile \"{item}\" --fields-glob \"{yanroy_polygon_glob}\" --ssurgo-path \"{ssurgo_path}\" --field-id-field \"{field_id_field}\" --tile-field \"{tile_field}\" --mukey-field \"{mukey_field}\" --output-csv \"{per_tile_outdir}/{item}.tile_field_mukey_map.csv\" --verbose"
+      verbose: true
+    foreach: tiles
+    output_var: tile_field_mukey
+  - name: "{sys.step.NN}_combine_tile_field_mukey"
+    plugin: combine_files
+    args:
+      input_glob: "{tile_field_mukey_glob}"
+      output_file: "{tile_field_mukey_csv}"
+      format: csv
+      verbose: true
+    output_var: tile_field_mukey_combined
+  # - name: "{sys.step.NN}_load_tile_field_mukey_duckdb"
+  #   plugin: duckdb_load
+  #   args:
+  #     db_path: "{project.duckdb_path}"
+  #     table: "{duckdb_table_tile_field_mukey}"
+  #     source: "{tile_field_mukey_csv}"
+  #     format: csv
+  #     mode: "{duckdb_load_mode}"
+  #     csv_header: true
+  #     analyze: true
+  #     verbose: true
+  #   output_var: tile_field_mukey_duckdb

@@ -174,7 +174,20 @@ def _import_field_table(
     handle, reader = _open_csv(path)
     try:
         fieldnames = [str(x) for x in reader.fieldnames or []]
-        _require_fields(path, fieldnames, [key_field])
+        key_aliases = [key_field]
+        if key_field.lower() == "tile_field_id":
+            key_aliases = ["tile_field_ID", "tile_field_id"]
+            has_direct_key = any(field in fieldnames for field in key_aliases)
+            has_key_parts = "tile_coord" in fieldnames and any(
+                field in fieldnames for field in ["field_ID", "field_id"]
+            )
+            if not has_direct_key and not has_key_parts:
+                raise ValueError(
+                    "input csv must contain tile_field_ID/tile_field_id or "
+                    f"tile_coord plus field_ID/field_id: {path}"
+                )
+        else:
+            _require_fields(path, fieldnames, [key_field])
         conn.execute(
             f"""
             CREATE TABLE {table} (
@@ -187,7 +200,15 @@ def _import_field_table(
         insert_sql = f"INSERT INTO {table} ({', '.join(insert_columns)}) VALUES ({', '.join('?' for _ in insert_columns)})"
         row_count = 0
         for row in reader:
-            key_value = _normalize_tile_field_id(row.get(key_field)) if key_field.lower() == "tile_field_id" else _to_text(row.get(key_field))
+            if key_field.lower() == "tile_field_id":
+                key_value = _normalize_tile_field_id(_pick(row, *key_aliases))
+                if not key_value:
+                    tile_coord = _pick(row, "tile_coord")
+                    field_id = _pick(row, "field_ID", "field_id")
+                    if tile_coord and field_id:
+                        key_value = _normalize_tile_field_id(f"{tile_coord}_{field_id}")
+            else:
+                key_value = _to_text(row.get(key_field))
             if not key_value:
                 continue
             values = [_pick(row, *value_columns[column]) for column in value_columns]

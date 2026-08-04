@@ -1,0 +1,7 @@
+{
+  "controller_url": "http://localhost:8080",
+  "log_dir": "/tmp/landcore-field-year-crop/fake-hpcc-synthetic/runtime/logs",
+  "tmp_dir": "/tmp/landcore-field-year-crop/fake-hpcc-synthetic/runtime/tmp",
+  "data_dir": "/tmp/landcore-field-year-crop/fake-hpcc-synthetic/runtime/data",
+  "max_asset_bytes": 20000000000
+}

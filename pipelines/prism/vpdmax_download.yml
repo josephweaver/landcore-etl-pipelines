@@ -25,6 +25,8 @@ steps:
       overwrite: false
       timeout_seconds: 120
     foreach: years
+    resources:
+      time: "04:00:00"
     output_var: staged_raw
   - name: "{sys.step.NN}_extract_prism_archives"
     plugin: archive_extract
@@ -33,4 +35,6 @@ steps:
       out: "{extractdir}/{item}"
       overwrite: true
     foreach: years
+    resources:
+      time: "04:00:00"
     output_var: extracted_raw

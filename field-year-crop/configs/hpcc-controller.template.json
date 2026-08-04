@@ -1,0 +1,192 @@
+{
+  "api_version": "goet/v1alpha1",
+  "kind": "Controller",
+  "variables": [
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "controller_listen_host"
+      },
+      "type": "string",
+      "expression": "127.0.0.1"
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "controller_listen_port"
+      },
+      "type": "int",
+      "expression": 8080
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "controller_url"
+      },
+      "type": "string",
+      "expression": "<CONTROLLER_PUBLIC_URL>"
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "controller_root_dir"
+      },
+      "type": "path",
+      "expression": "<CONTROLLER_VM_STATE_ROOT>/controller"
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "controller_log_root_path"
+      },
+      "type": "path",
+      "expression": "<CONTROLLER_VM_LOG_ROOT>/controller"
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "main_database_driver"
+      },
+      "type": "string",
+      "expression": "sqlite"
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "main_database_connection_string"
+      },
+      "type": "string",
+      "expression": "<CONTROLLER_VM_STATE_ROOT>/controller/workflow-execution.sqlite"
+    },
+    {
+      "name": {
+        "namespace": "controller_config",
+        "key": "authentication"
+      },
+      "type": "object",
+      "expression": {
+        "mode": {
+          "type": "string",
+          "expression": "bearer"
+        },
+        "credentials": {
+          "type": "list",
+          "expression": [
+            {
+              "type": "object",
+              "expression": {
+                "id": {
+                  "type": "string",
+                  "expression": "client-primary"
+                },
+                "role": {
+                  "type": "string",
+                  "expression": "client"
+                },
+                "token_file": {
+                  "type": "path",
+                  "expression": "<CONTROLLER_CLIENT_TOKEN_FILE_ON_VM>"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "expression": {
+                "id": {
+                  "type": "string",
+                  "expression": "workers-primary"
+                },
+                "role": {
+                  "type": "string",
+                  "expression": "worker"
+                },
+                "token_file": {
+                  "type": "path",
+                  "expression": "<CONTROLLER_WORKER_TOKEN_FILE_ON_VM>"
+                }
+              }
+            },
+            {
+              "type": "object",
+              "expression": {
+                "id": {
+                  "type": "string",
+                  "expression": "admin-primary"
+                },
+                "role": {
+                  "type": "string",
+                  "expression": "admin"
+                },
+                "token_file": {
+                  "type": "path",
+                  "expression": "<CONTROLLER_ADMIN_TOKEN_FILE_ON_VM>"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "execution_environment": {
+    "name": "landcore-hpcc-h18v07-2010",
+    "transports": [
+      {
+        "name": "login",
+        "type": "ssh",
+        "settings": {
+          "host": "dev-amd20",
+          "port": "22",
+          "user": "weave151",
+          "identity_file": "<CONTROLLER_VM_HPCC_PRIVATE_KEY_PATH>",
+          "host_key_policy": "pinned",
+          "pinned_host_key": "<DEV_AMD20_PUBLIC_HOST_KEY>",
+          "jump_hosts": [
+            {
+              "host": "hpcc.msu.edu",
+              "port": "22",
+              "user": "weave151",
+              "identity_file": "<CONTROLLER_VM_HPCC_PRIVATE_KEY_PATH>",
+              "host_key_policy": "pinned",
+              "pinned_host_key": "<HPCC_GATEWAY_PUBLIC_HOST_KEY>"
+            }
+          ]
+        }
+      }
+    ],
+    "dialect": {
+      "type": "bash"
+    },
+    "scheduler": {
+      "type": "slurm",
+      "settings": {
+        "partition": "<SLURM_PARTITION>",
+        "account": "<SLURM_ACCOUNT>",
+        "time": "<SLURM_TIME>",
+        "mem": "<SLURM_MEM>",
+        "cpus_per_task": "<SLURM_CPUS_PER_TASK>"
+      }
+    },
+    "runtime": {
+      "type": "singularity_worker",
+      "settings": {
+        "root": "<HPCC_SCRATCH_ROOT>/runtime",
+        "controller_url": "<CONTROLLER_PUBLIC_URL>",
+        "controller_token_file": "<WORKER_CONTROLLER_TOKEN_FILE_ON_HPCC>",
+        "local_worker_artifact": "<CONTROLLER_VM_GOET_WORKER_ARTIFACT>",
+        "data_dir": "<HPCC_SCRATCH_ROOT>/runtime/data",
+        "asset_cache_dir": "<HPCC_SCRATCH_ROOT>/cache",
+        "python_executable": "python3",
+        "max_asset_bytes": 20000000000,
+        "data_location_roots": {
+          "hpcc_scratch": "<HPCC_SCRATCH_ROOT>",
+          "landcore_data": "<LANDCORE_DATA_ROOT>"
+        },
+        "singularity_executable": "/usr/bin/singularity",
+        "image_path": "<GORC_GDAL_IMAGE>",
+        "container_worker_executable": "<CONTAINER_GOET_WORKER_EXECUTABLE>",
+        "bind": "<HPCC_SCRATCH_ROOT>:<HPCC_SCRATCH_ROOT>,<LANDCORE_DATA_ROOT>:<LANDCORE_DATA_ROOT>"
+      }
+    }
+  }
+}

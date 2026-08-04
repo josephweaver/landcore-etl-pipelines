@@ -1,0 +1,40 @@
+project_id: land_core
+requires_pipelines:
+  - pipelines/ssurgo/yanroy_tile_field_mukey.yml
+vars:
+  dataset_id: stage.ssurgo_field_nccpi_v1
+  name: ssurgo_yanroy_nccpi_sda
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+  field_id_field: tile_field_id
+  mukey_field: mukey
+  sda_endpoint: https://SDMDataAccess.sc.egov.usda.gov/Tabular/post.rest
+  sda_table_name: valu1
+  valu1_columns: "mukey,nccpi3all,nccpi3corn,nccpi3soy"
+  sda_chunk_size: 500
+  sda_sleep_seconds: 0.2
+  outdir: "{workdir}/ssurgo_nccpi"
+  field_mukey_long_csv: "{env.basedir}/data/ssurgo/yanroy_mukey/tile_field2mukey.csv"
+  valu1_csv: "{outdir}/valu1_by_mukey.csv"
+  field_valu1_csv: "{outdir}/field_nccpi_long.csv"
+  field_nccpi_csv: "{outdir}/field_nccpi_weighted.csv"
+  valu1_summary_json: "{outdir}/valu1_download_summary.json"
+  field_nccpi_summary_json: "{outdir}/field_nccpi_weighted.summary.json"
+dirs:
+  workdir: "{env.workdir}/{name}/{sys.now.yymmdd}/{sys.now.hhmmss}-{sys.run.short_id}"
+  logdir: "{workdir}/logs"
+steps:
+  - name: "{sys.step.NN}_download_valu1_nccpi_by_mukey"
+    plugin: exec_script
+    args:
+      script: scripts/ssurgo/sda_download_valu1_by_mukey.py
+      script_args: "--field-mukey-long-csv \"{field_mukey_long_csv}\" --field-id-field \"{field_id_field}\" --mukey-field \"{mukey_field}\" --valu1-columns \"{valu1_columns}\" --sda-endpoint \"{sda_endpoint}\" --table-name \"{sda_table_name}\" --chunk-size {sda_chunk_size} --sleep-seconds {sda_sleep_seconds} --output-valu1-csv \"{valu1_csv}\" --output-field-valu1-csv \"{field_valu1_csv}\" --summary-json \"{valu1_summary_json}\" --verbose"
+      verbose: true
+    output_var: valu1_download
+  - name: "{sys.step.NN}_aggregate_field_nccpi_weighted"
+    plugin: exec_script
+    args:
+      script: scripts/ssurgo/aggregate_field_nccpi.py
+      script_args: "--input-csv \"{field_valu1_csv}\" --field-id-field \"{field_id_field}\" --weight-field pct_overlap --value-fields \"nccpi3all,nccpi3corn,nccpi3soy\" --output-csv \"{field_nccpi_csv}\" --summary-json \"{field_nccpi_summary_json}\" --verbose"
+      verbose: true
+    output_var: field_nccpi_weighted

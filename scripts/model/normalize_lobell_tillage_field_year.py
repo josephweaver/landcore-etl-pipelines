@@ -74,17 +74,18 @@ def _dominant_tillage(row: dict[str, str]) -> str:
     count_1 = _to_float(_pick(row, "tillage_1_count", "value_1_count"))
 
     if prop_0 is not None and prop_1 is not None:
-        if prop_1 > prop_0:
-            return "1"
-        if prop_0 > prop_1:
-            return "0"
-        return ""
+        return "1" if prop_1 > prop_0 else "0"
     if count_0 is not None and count_1 is not None:
-        if count_1 > count_0:
-            return "1"
-        if count_0 > count_1:
-            return "0"
+        return "1" if count_1 > count_0 else "0"
     return ""
+
+
+def _valid_point_count(row: dict[str, str]) -> float | None:
+    count_0 = _to_float(_pick(row, "tillage_0_count", "value_0_count"))
+    count_1 = _to_float(_pick(row, "tillage_1_count", "value_1_count"))
+    if count_0 is None or count_1 is None:
+        return None
+    return count_0 + count_1
 
 
 def main() -> int:
@@ -101,6 +102,7 @@ def main() -> int:
     summary_json.parent.mkdir(parents=True, exist_ok=True)
 
     row_count = 0
+    low_valid_point_rows = 0
     duplicates = 0
     seen_keys: set[tuple[str, str]] = set()
 
@@ -133,6 +135,11 @@ def main() -> int:
         writer.writeheader()
 
         for row in reader:
+            valid_point_count = _valid_point_count(row)
+            if valid_point_count is not None and valid_point_count < 10:
+                low_valid_point_rows += 1
+                continue
+
             tile_field_id = _build_tile_field_id(row)
             year = _pick(row, "day", "year")
             if not tile_field_id or not year:
@@ -166,6 +173,7 @@ def main() -> int:
         "input_csv": input_csv.as_posix(),
         "output_csv": output_csv.as_posix(),
         "row_count": row_count,
+        "low_valid_point_rows_removed": low_valid_point_rows,
         "duplicate_tile_field_year_rows": duplicates,
     }
     summary_json.write_text(json.dumps(summary, indent=2), encoding="utf-8")

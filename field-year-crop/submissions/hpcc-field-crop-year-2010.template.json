@@ -1,0 +1,30 @@
+{
+  "api_version": "landcore/hpcc-one-tile/v1",
+  "kind": "RenderedSubmissionTemplate",
+  "controller_url": "<CONTROLLER_PUBLIC_URL>",
+  "controller_token_file": "<CONTROLLER_CLIENT_TOKEN_FILE_LOCAL>",
+  "project": "land-core.project.json",
+  "workflow_template": "field-year-crop/workflows/local-field-crop-year-2010.workflow.json",
+  "workflow_rendered_path": "field-year-crop/.run/hpcc-one-tile-2010/hpcc-field-crop-year-2010.workflow.json",
+  "source_manifest_mode": "inline_files_from_rendered_workflow_manifest",
+  "hpcc_inputs": {
+    "scratch_root": "<HPCC_SCRATCH_ROOT>",
+    "landcore_data_root": "<LANDCORE_DATA_ROOT>",
+    "yanroy_raster": "<YANROY_H18V07_PATH>",
+    "cdl_zip": "<HPCC_SCRATCH_ROOT>/source/2010_30m_cdls.zip",
+    "cdl_extracted_root": "<HPCC_SCRATCH_ROOT>/source/cdl-2010",
+    "publish_root": "<PUBLISH_ROOT>"
+  },
+  "slurm_resources": {
+    "partition": "<SLURM_PARTITION>",
+    "account": "<SLURM_ACCOUNT>",
+    "time": "<SLURM_TIME>",
+    "mem": "<SLURM_MEM>",
+    "cpus_per_task": "<SLURM_CPUS_PER_TASK>"
+  },
+  "notes": [
+    "Render placeholders into an ignored local config before running OS-007.",
+    "Do not commit controller token files, SSH private keys, cloud credentials, or rendered controller hostnames if they are private.",
+    "Google Drive publication remains out of scope for OS-007."
+  ]
+}

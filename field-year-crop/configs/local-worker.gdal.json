@@ -1,0 +1,11 @@
+{
+  "log_dir": ".runs/worker/logs",
+  "tmp_dir": ".runs/worker/tmp",
+  "data_dir": ".runs/worker/data",
+  "controller_url": "http://localhost:8080",
+  "python_executable": "python3",
+  "max_asset_bytes": 20000000000,
+  "data_location_roots": {
+    "landcore_synthetic": "/tmp/landcore-field-year-crop/local-synthetic"
+  }
+}
