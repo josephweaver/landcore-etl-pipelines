@@ -37,6 +37,8 @@
 # 11. [reset]
 # 12. [wall_clock_limit_seconds]
 # 13. [wall_clock_margin_seconds]
+# 14. [model_variant]
+# 15. [year_reference]
 #
 # Main outputs:
 # - output_model_rds when all checkpoints are complete
@@ -78,7 +80,7 @@ if (length(args) < 2) {
       "Usage:",
       "Rscript Neighborhood_fit_chkptstanr.R <data_csv> <checkpoint_dir> [output_model_rds] [fit_summary_json]",
       "[iter_warmup] [iter_sampling] [iter_per_chkpt] [chains] [seed] [stop_after] [reset]",
-      "[wall_clock_limit_seconds] [wall_clock_margin_seconds] [model_variant]"
+      "[wall_clock_limit_seconds] [wall_clock_margin_seconds] [model_variant] [year_reference]"
     )
   )
 }
@@ -99,6 +101,10 @@ wall_clock_margin_seconds <- if (length(args) >= 13 && nzchar(args[13])) as.inte
 model_variant <- if (length(args) >= 14 && nzchar(args[14])) args[14] else "annual"
 if (!model_variant %in% c("annual", "within_between")) {
   stop("model_variant must be one of: annual, within_between")
+}
+year_reference <- if (length(args) >= 15 && nzchar(args[15])) as.integer(args[15]) else 2017L
+if (is.na(year_reference)) {
+  stop("year_reference must be an integer year")
 }
 
 # chkptstanr saves progress in chunks, so we can resume a long Stan run later.
@@ -189,32 +195,39 @@ if (model_variant == "within_between") {
     "vpdmax_7",
     "tillage_prop_01*vpdmax_7",
     "tillage_prop_01*nccpi3corn",
-    "year"
+    "year_factor"
   )
   priors_unscaled <- data.frame(
-    parameter = c("year", "tillage_prop_01", "nccpi3corn", "vpdmax_7"),
-    scalar_par = c("year", "tillage_prop_01", "nccpi3corn", "vpdmax_7"),
-    linear_effect_yieldscale = c(15, 26, 1150, -20)
+    parameter = c("tillage_prop_01", "nccpi3corn", "vpdmax_7"),
+    scalar_par = c("tillage_prop_01", "nccpi3corn", "vpdmax_7"),
+    linear_effect_yieldscale = c(26, 1150, -20)
   )
 }
 
 # Keep the original scaling values so priors can roughly match the scale
 # of each main-effect predictor before standardization.
 this_scaling_factors <- data.frame(
-  param = c("tillage_prop_01", "nccpi3corn", "vpdmax_7", "year"),
+  param = c("tillage_prop_01", "nccpi3corn", "vpdmax_7"),
   mean = c(
     mean(this_df$tillage_prop_01),
     mean(this_df$nccpi3corn),
-    mean(this_df$vpdmax_7),
-    0
+    mean(this_df$vpdmax_7)
   ),
   sd = c(
     sd(this_df$tillage_prop_01),
     sd(this_df$nccpi3corn),
-    sd(this_df$vpdmax_7),
-    1
+    sd(this_df$vpdmax_7)
   )
 )
+
+available_years <- sort(unique(as.integer(this_df$year[!is.na(this_df$year)])))
+if (!year_reference %in% available_years) {
+  stop(
+    "year_reference ", year_reference,
+    " is absent from the input data; available years: ",
+    paste(available_years, collapse = ", ")
+  )
+}
 
 # Standardizing numeric predictors usually makes HMC sampling more stable.
 if (model_variant == "within_between") {
@@ -224,7 +237,7 @@ if (model_variant == "within_between") {
       tillage_prop_01 = as.numeric(scale(tillage_prop_01)),
       nccpi3corn = as.numeric(scale(nccpi3corn)),
       vpdmax_7 = as.numeric(scale(vpdmax_7)),
-      year_factor = factor(year)
+      year_factor = relevel(factor(year), ref = as.character(year_reference))
     ) %>%
     group_by(tile_field_ID) %>%
     mutate(
@@ -233,15 +246,14 @@ if (model_variant == "within_between") {
     ) %>%
     ungroup()
 } else {
-  # Year is re-centered so the annual-model intercept is near the first study year.
   this_county_dat <- this_df %>%
+    drop_na(unscaled_yield, tile_field_ID, tillage_prop_01, nccpi3corn, vpdmax_7, year) %>%
     mutate(
       tillage_prop_01 = as.numeric(scale(tillage_prop_01)),
       nccpi3corn = as.numeric(scale(nccpi3corn)),
       vpdmax_7 = as.numeric(scale(vpdmax_7)),
-      year = as.numeric(year - 2010)
+      year_factor = relevel(factor(year), ref = as.character(year_reference))
     ) %>%
-    drop_na(unscaled_yield, tile_field_ID, tillage_prop_01, nccpi3corn, vpdmax_7, year) %>%
     ungroup()
 }
 
@@ -289,6 +301,7 @@ message("Output model path: ", output_model_rds)
 message("Fit summary path: ", fit_summary_json)
 message(
   "Config: model_variant=", model_variant,
+  ", year_reference=", year_reference,
   ", iter_warmup=", iter_warmup,
   ", iter_sampling=", iter_sampling,
   ", iter_per_chkpt=", iter_per_chkpt,
@@ -311,6 +324,7 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
     unique_tile_field_count = dplyr::n_distinct(this_county_dat$tile_field_ID),
     focal_fips = sort(unique(this_county_dat$FIPS)),
     model_variant = model_variant,
+    year_reference = year_reference,
     model_covars = model_covars,
     scaling = this_scaling_factors,
     completed_checkpoints = completed_checkpoints,
@@ -320,9 +334,15 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
     partial_draws_path = if (is.null(partial_draws_path)) NULL else normalizePath(partial_draws_path, winslash = "/", mustWork = FALSE),
     partial_summary_path = if (is.null(partial_summary_path)) NULL else normalizePath(partial_summary_path, winslash = "/", mustWork = FALSE),
     note = if (model_variant == "within_between") {
-      "Checkpointed neighborhood fit decomposes standardized tillage_prop_01 into between-field mean and within-field annual deviation terms."
+      paste0(
+        "Checkpointed neighborhood fit decomposes standardized tillage_prop_01 into between-field mean and within-field annual deviation terms, ",
+        "with year fixed effects referenced to ", year_reference, "."
+      )
     } else {
-      "Checkpointed neighborhood fit uses annual tillage_prop_01 as its tillage covariate."
+      paste0(
+        "Checkpointed neighborhood fit uses annual tillage_prop_01 as its tillage covariate, ",
+        "with year fixed effects referenced to ", year_reference, "."
+      )
     }
   )
   write_json(fit_summary, fit_summary_json, auto_unbox = TRUE, pretty = TRUE)
