@@ -43,6 +43,7 @@
 # 17. [year_trend_origin]
 # 18. [data_scope]
 # 19. [focal_fips]
+# 20. [adapt_delta]
 #
 # Main outputs:
 # - output_model_rds when all checkpoints are complete
@@ -85,7 +86,7 @@ if (length(args) < 2) {
       "Rscript Neighborhood_fit_chkptstanr.R <data_csv> <checkpoint_dir> [output_model_rds] [fit_summary_json]",
       "[iter_warmup] [iter_sampling] [iter_per_chkpt] [chains] [seed] [stop_after] [reset]",
       "[wall_clock_limit_seconds] [wall_clock_margin_seconds] [model_variant] [year_reference] [year_effect] [year_trend_origin]",
-      "[data_scope] [focal_fips]"
+      "[data_scope] [focal_fips] [adapt_delta]"
     )
   )
 }
@@ -130,6 +131,10 @@ if (data_scope == "focal" && is.null(focal_fips)) {
 focal_fips_int <- if (is.null(focal_fips)) NULL else suppressWarnings(as.integer(focal_fips))
 if (data_scope == "focal" && is.na(focal_fips_int)) {
   stop("focal_fips must be an integer FIPS code")
+}
+adapt_delta <- if (length(args) >= 20 && nzchar(args[20])) as.numeric(args[20]) else 0.90
+if (is.na(adapt_delta) || adapt_delta <= 0 || adapt_delta >= 1) {
+  stop("adapt_delta must be a number strictly between 0 and 1")
 }
 
 # chkptstanr saves progress in chunks, so we can resume a long Stan run later.
@@ -365,6 +370,7 @@ message(
   "Config: model_variant=", model_variant,
   ", data_scope=", data_scope,
   ", focal_fips=", if (is.null(focal_fips)) "" else focal_fips,
+  ", adapt_delta=", adapt_delta,
   ", year_reference=", year_reference,
   ", year_effect=", year_effect,
   ", year_trend_origin=", year_trend_origin,
@@ -393,6 +399,7 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
     model_variant = model_variant,
     data_scope = data_scope,
     requested_focal_fips = focal_fips,
+    adapt_delta = adapt_delta,
     year_reference = year_reference,
     year_effect = year_effect,
     year_trend_origin = year_trend_origin,
@@ -441,7 +448,7 @@ repeat {
       parallel_chains = min(chains, 4L),
       threads_per = 1L,
       chkpt_progress = TRUE,
-      control = list(adapt_delta = 0.90, max_treedepth = 10),
+      control = list(adapt_delta = adapt_delta, max_treedepth = 10),
       seed = seed,
       stop_after = next_stop_after,
       reset = reset,
