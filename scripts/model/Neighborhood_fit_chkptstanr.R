@@ -105,8 +105,8 @@ reset <- if (length(args) >= 11) as.logical(as.integer(args[11])) else FALSE
 wall_clock_limit_seconds <- if (length(args) >= 12 && nzchar(args[12])) as.integer(args[12]) else NULL
 wall_clock_margin_seconds <- if (length(args) >= 13 && nzchar(args[13])) as.integer(args[13]) else 600L
 model_variant <- if (length(args) >= 14 && nzchar(args[14])) args[14] else "annual"
-if (!model_variant %in% c("annual", "within_between")) {
-  stop("model_variant must be one of: annual, within_between")
+if (!model_variant %in% c("annual", "within_between", "within_between_vpd")) {
+  stop("model_variant must be one of: annual, within_between, within_between_vpd")
 }
 year_reference <- if (length(args) >= 15 && nzchar(args[15])) as.integer(args[15]) else 2016L
 if (is.na(year_reference)) {
@@ -219,10 +219,34 @@ year_covars <- switch(
 )
 
 # These are the fixed-effect terms included in the regression. The optional
-# within_between variant follows the original RiskModel approach: it separates
-# persistent between-field tillage differences from annual within-field changes
-# and absorbs common annual shocks with year fixed effects.
-if (model_variant == "within_between") {
+# within_between variants follow the original RiskModel approach: they separate
+# persistent between-field tillage differences from annual within-field changes.
+# The within_between_vpd variant additionally decomposes VPD into its field mean
+# and annual deviation. NCCPI remains a between-field predictor because it is
+# time-invariant within the source fields.
+if (model_variant == "within_between_vpd") {
+  model_covars <- c(c(
+    "mean_tillage_prop_01",
+    "within_tillage_prop_01",
+    "nccpi3corn",
+    "mean_vpdmax_7",
+    "within_vpdmax_7",
+    "within_tillage_prop_01:vpdmax_7",
+    "mean_tillage_prop_01:vpdmax_7",
+    "mean_tillage_prop_01:nccpi3corn"
+  ), year_covars)
+  priors_unscaled <- data.frame(
+    parameter = c(
+      "mean_tillage_prop_01",
+      "within_tillage_prop_01",
+      "nccpi3corn",
+      "mean_vpdmax_7",
+      "within_vpdmax_7"
+    ),
+    scalar_par = c("tillage_prop_01", "tillage_prop_01", "nccpi3corn", "vpdmax_7", "vpdmax_7"),
+    linear_effect_yieldscale = c(26, 26, 1150, -20, -20)
+  )
+} else if (model_variant == "within_between") {
   model_covars <- c(c(
     "mean_tillage_prop_01",
     "within_tillage_prop_01",
@@ -291,7 +315,7 @@ if (year_effect == "fixed" && !year_reference %in% available_years) {
 }
 
 # Standardizing numeric predictors usually makes HMC sampling more stable.
-if (model_variant == "within_between") {
+if (model_variant %in% c("within_between", "within_between_vpd")) {
   this_county_dat <- this_df %>%
     drop_na(unscaled_yield, tile_field_ID, tillage_prop_01, nccpi3corn, vpdmax_7, year) %>%
     mutate(
@@ -316,6 +340,16 @@ if (model_variant == "within_between") {
       vpdmax_7 = as.numeric(scale(vpdmax_7)),
       year_factor = if (year_effect == "fixed") relevel(factor(year), ref = as.character(year_reference)) else factor(year),
       year_trend = as.numeric(year - year_trend_origin)
+    ) %>%
+    ungroup()
+}
+
+if (model_variant == "within_between_vpd") {
+  this_county_dat <- this_county_dat %>%
+    group_by(tile_field_ID) %>%
+    mutate(
+      mean_vpdmax_7 = mean(vpdmax_7),
+      within_vpdmax_7 = vpdmax_7 - mean_vpdmax_7
     ) %>%
     ungroup()
 }
