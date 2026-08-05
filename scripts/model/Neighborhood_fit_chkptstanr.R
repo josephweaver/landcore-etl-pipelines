@@ -41,6 +41,8 @@
 # 15. [year_reference]
 # 16. [year_effect]
 # 17. [year_trend_origin]
+# 18. [data_scope]
+# 19. [focal_fips]
 #
 # Main outputs:
 # - output_model_rds when all checkpoints are complete
@@ -82,7 +84,8 @@ if (length(args) < 2) {
       "Usage:",
       "Rscript Neighborhood_fit_chkptstanr.R <data_csv> <checkpoint_dir> [output_model_rds] [fit_summary_json]",
       "[iter_warmup] [iter_sampling] [iter_per_chkpt] [chains] [seed] [stop_after] [reset]",
-      "[wall_clock_limit_seconds] [wall_clock_margin_seconds] [model_variant] [year_reference] [year_effect] [year_trend_origin]"
+      "[wall_clock_limit_seconds] [wall_clock_margin_seconds] [model_variant] [year_reference] [year_effect] [year_trend_origin]",
+      "[data_scope] [focal_fips]"
     )
   )
 }
@@ -115,6 +118,18 @@ if (!year_effect %in% c("fixed", "trend", "random", "random_trend")) {
 year_trend_origin <- if (length(args) >= 17 && nzchar(args[17])) as.integer(args[17]) else 2005L
 if (is.na(year_trend_origin)) {
   stop("year_trend_origin must be an integer year")
+}
+data_scope <- if (length(args) >= 18 && nzchar(args[18])) args[18] else "neighborhood"
+if (!data_scope %in% c("neighborhood", "focal")) {
+  stop("data_scope must be one of: neighborhood, focal")
+}
+focal_fips <- if (length(args) >= 19 && nzchar(args[19])) args[19] else NULL
+if (data_scope == "focal" && is.null(focal_fips)) {
+  stop("focal_fips is required when data_scope=focal")
+}
+focal_fips_int <- if (is.null(focal_fips)) NULL else suppressWarnings(as.integer(focal_fips))
+if (data_scope == "focal" && is.na(focal_fips_int)) {
+  stop("focal_fips must be an integer FIPS code")
 }
 
 # chkptstanr saves progress in chunks, so we can resume a long Stan run later.
@@ -177,6 +192,18 @@ if (is.na(cmdstan_path_to_use) || !nzchar(cmdstan_path_to_use)) {
 set_cmdstan_path(cmdstan_path_to_use)
 
 this_df <- read_csv(dat_path, show_col_types = FALSE)
+
+input_row_count <- nrow(this_df)
+if (data_scope == "focal") {
+  if (!"FIPS" %in% colnames(this_df)) {
+    stop("input data must contain FIPS when data_scope=focal")
+  }
+  this_df <- this_df %>%
+    filter(as.integer(FIPS) == focal_fips_int)
+  if (nrow(this_df) == 0) {
+    stop("input data has zero rows for focal_fips=", focal_fips)
+  }
+}
 
 year_covars <- switch(
   year_effect,
@@ -336,6 +363,8 @@ message("Output model path: ", output_model_rds)
 message("Fit summary path: ", fit_summary_json)
 message(
   "Config: model_variant=", model_variant,
+  ", data_scope=", data_scope,
+  ", focal_fips=", if (is.null(focal_fips)) "" else focal_fips,
   ", year_reference=", year_reference,
   ", year_effect=", year_effect,
   ", year_trend_origin=", year_trend_origin,
@@ -358,9 +387,12 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
     output_model_rds = normalizePath(output_model_rds, winslash = "/", mustWork = FALSE),
     fit_summary_json = normalizePath(fit_summary_json, winslash = "/", mustWork = FALSE),
     row_count = nrow(this_county_dat),
+    input_row_count = input_row_count,
     unique_tile_field_count = dplyr::n_distinct(this_county_dat$tile_field_ID),
     focal_fips = sort(unique(this_county_dat$FIPS)),
     model_variant = model_variant,
+    data_scope = data_scope,
+    requested_focal_fips = focal_fips,
     year_reference = year_reference,
     year_effect = year_effect,
     year_trend_origin = year_trend_origin,
@@ -374,7 +406,8 @@ write_fit_summary <- function(status_text, final_fit_path = NULL, partial_draws_
     partial_summary_path = if (is.null(partial_summary_path)) NULL else normalizePath(partial_summary_path, winslash = "/", mustWork = FALSE),
     note = paste0(
       "Checkpointed neighborhood fit uses model_variant=", model_variant,
-      " and year_effect=", year_effect, "."
+      ", year_effect=", year_effect,
+      ", and data_scope=", data_scope, "."
     )
   )
   write_json(fit_summary, fit_summary_json, auto_unbox = TRUE, pretty = TRUE)
